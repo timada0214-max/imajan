@@ -1655,3 +1655,57 @@ select:focus {
 .match-player-select option:disabled {
   color: #a0a7a2;
 }
+
+
+/* STEP7-4：持ち点入力アシスト */
+.point-total-panel {
+  align-items: start;
+}
+
+.point-total-difference {
+  grid-column: 1 / -1;
+
+  margin: 2px 0 0;
+  padding: 9px 11px;
+
+  color: var(--color-text-secondary);
+  background: #f5f7f5;
+  border-radius: 9px;
+
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.point-total-difference.is-short {
+  color: #8a5a00;
+  background: #fff8e7;
+}
+
+.point-total-difference.is-over {
+  color: #b42318;
+  background: #fff1f0;
+}
+
+.point-total-difference.is-matched {
+  color: var(--color-primary-dark);
+  background: #edf8f0;
+}
+
+.match-point-input.is-auto-calculated {
+  color: var(--color-primary-dark);
+  background: #edf8f0;
+  border-color: #9fc9aa;
+
+  font-weight: 700;
+}
+
+.auto-calculated-note {
+  display: block;
+  margin-top: 4px;
+
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: 700;
+}

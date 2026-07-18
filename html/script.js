@@ -164,6 +164,9 @@ const enteredPointTotal = document.getElementById(
 const requiredPointTotal = document.getElementById(
   "required-point-total",
 );
+const pointTotalDifference = document.getElementById(
+  "point-total-difference",
+);
 const matchEntryError = document.getElementById(
   "match-entry-error",
 );
@@ -1272,7 +1275,7 @@ function prepareMatchForm({ match = null } = {}) {
   }
 
   updatePlayerSelectAvailability();
-  updateMatchPreview();
+  updateMatchPointAssist();
 
   if (!match && initialPlayerIds.length > 0) {
     focusFirstMatchPointInput();
@@ -1347,6 +1350,9 @@ function renderMatchEntryRows(
             step="100"
             placeholder="例：42000"
           />
+          <small class="auto-calculated-note" hidden>
+            残り点数を自動入力
+          </small>
         </label>
       </div>
     `;
@@ -1386,9 +1392,15 @@ function renderMatchEntryRows(
 
     select.addEventListener("change", () => {
       updatePlayerSelectAvailability();
-      updateMatchPreview();
+      updateMatchPointAssist();
     });
-    pointInput.addEventListener("input", updateMatchPreview);
+    pointInput.addEventListener("input", () => {
+      if (pointInput.dataset.autoCalculated === "true") {
+        clearAutoCalculatedPoint(pointInput);
+      }
+
+      updateMatchPointAssist();
+    });
     pointInput.addEventListener("keydown", (event) => {
       if (event.key !== "Enter") {
         return;
@@ -1414,6 +1426,150 @@ function renderMatchEntryRows(
 
     matchEntryList.appendChild(row);
   }
+}
+
+function getMatchPointInputs() {
+  return Array.from(
+    matchEntryList.querySelectorAll(".match-point-input"),
+  );
+}
+
+function setAutoCalculatedPoint(input, points) {
+  input.value = String(points);
+  input.dataset.autoCalculated = "true";
+  input.classList.add("is-auto-calculated");
+
+  const note = input
+    .closest("label")
+    ?.querySelector(".auto-calculated-note");
+
+  if (note) {
+    note.hidden = false;
+  }
+}
+
+function clearAutoCalculatedPoint(input, { clearValue = false } = {}) {
+  delete input.dataset.autoCalculated;
+  input.classList.remove("is-auto-calculated");
+
+  if (clearValue) {
+    input.value = "";
+  }
+
+  const note = input
+    .closest("label")
+    ?.querySelector(".auto-calculated-note");
+
+  if (note) {
+    note.hidden = true;
+  }
+}
+
+function applyLastPointAutoCalculation() {
+  const rule = getMatchRule();
+  const inputs = getMatchPointInputs();
+  const currentAutoInput = inputs.find(
+    (input) => input.dataset.autoCalculated === "true",
+  );
+
+  if (currentAutoInput) {
+    const otherValues = inputs
+      .filter((input) => input !== currentAutoInput)
+      .map((input) => input.value.trim());
+
+    const canRecalculate = otherValues.every(
+      (value) =>
+        value !== "" &&
+        Number.isFinite(Number(value)) &&
+        Number.isInteger(Number(value)),
+    );
+
+    if (!canRecalculate) {
+      clearAutoCalculatedPoint(currentAutoInput, {
+        clearValue: true,
+      });
+      return;
+    }
+
+    const otherTotal = otherValues.reduce(
+      (sum, value) => sum + Number(value),
+      0,
+    );
+    const remaining = rule.requiredPointTotal - otherTotal;
+
+    if (remaining < 0) {
+      clearAutoCalculatedPoint(currentAutoInput, {
+        clearValue: true,
+      });
+      return;
+    }
+
+    setAutoCalculatedPoint(currentAutoInput, remaining);
+    return;
+  }
+
+  const blankInputs = inputs.filter(
+    (input) => input.value.trim() === "",
+  );
+
+  if (blankInputs.length !== 1) {
+    return;
+  }
+
+  const filledInputs = inputs.filter(
+    (input) => input.value.trim() !== "",
+  );
+  const allFilledValuesAreValid = filledInputs.every(
+    (input) =>
+      Number.isFinite(Number(input.value)) &&
+      Number.isInteger(Number(input.value)),
+  );
+
+  if (!allFilledValuesAreValid) {
+    return;
+  }
+
+  const filledTotal = filledInputs.reduce(
+    (sum, input) => sum + Number(input.value),
+    0,
+  );
+  const remaining = rule.requiredPointTotal - filledTotal;
+
+  if (remaining < 0) {
+    return;
+  }
+
+  setAutoCalculatedPoint(blankInputs[0], remaining);
+}
+
+function updatePointTotalDifference(total) {
+  const rule = getMatchRule();
+  const difference = rule.requiredPointTotal - total;
+
+  pointTotalDifference.className = "point-total-difference";
+
+  if (difference > 0) {
+    pointTotalDifference.textContent =
+      `あと${difference.toLocaleString("ja-JP")}点`;
+    pointTotalDifference.classList.add("is-short");
+    return;
+  }
+
+  if (difference < 0) {
+    pointTotalDifference.textContent =
+      `${Math.abs(difference).toLocaleString("ja-JP")}点多いです`;
+    pointTotalDifference.classList.add("is-over");
+    return;
+  }
+
+  pointTotalDifference.textContent =
+    "合計が一致しています";
+  pointTotalDifference.classList.add("is-matched");
+}
+
+function updateMatchPointAssist() {
+  applyLastPointAutoCalculation();
+  updateMatchPreview();
 }
 
 function readMatchEntries() {
@@ -1521,6 +1677,7 @@ function updateMatchPreview() {
 
   enteredPointTotal.textContent =
     `${total.toLocaleString("ja-JP")}点`;
+  updatePointTotalDifference(total);
 
   matchEntryError.textContent = "";
   matchCreateMessage.textContent = "";

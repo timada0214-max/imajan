@@ -155,6 +155,9 @@ const matchRuleDescription = document.getElementById(
 const matchEntryList = document.getElementById(
   "match-entry-list",
 );
+const matchMemberRestoreMessage = document.getElementById(
+  "match-member-restore-message",
+);
 const enteredPointTotal = document.getElementById(
   "entered-point-total",
 );
@@ -1095,6 +1098,98 @@ function getEventPlayers() {
   );
 }
 
+function getLatestEventMatch() {
+  if (!currentEvent) {
+    return null;
+  }
+
+  return getLocalMatches()
+    .filter(
+      (match) => match.eventId === currentEvent.eventId,
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() -
+        new Date(a.createdAt).getTime(),
+    )[0] || null;
+}
+
+function getQuickEntryPlayerIds(players, playerCount) {
+  const latestMatch = getLatestEventMatch();
+
+  if (latestMatch) {
+    const savedOrder = Array.isArray(
+      latestMatch.entryOrderPlayerIds,
+    )
+      ? latestMatch.entryOrderPlayerIds
+      : latestMatch.results
+          .slice()
+          .sort(
+            (a, b) =>
+              Number(a.rank) - Number(b.rank),
+          )
+          .map((result) => result.playerId);
+
+    const validPlayerIds = savedOrder.filter((playerId) =>
+      players.some(
+        (player) => player.playerId === playerId,
+      ),
+    );
+
+    if (validPlayerIds.length === playerCount) {
+      return {
+        playerIds: validPlayerIds,
+        source: "latest-match",
+      };
+    }
+  }
+
+  if (players.length === playerCount) {
+    return {
+      playerIds: players.map((player) => player.playerId),
+      source: "all-players",
+    };
+  }
+
+  return {
+    playerIds: [],
+    source: "",
+  };
+}
+
+function updatePlayerSelectAvailability() {
+  const selects = Array.from(
+    matchEntryList.querySelectorAll(
+      ".match-player-select",
+    ),
+  );
+  const selectedValues = selects
+    .map((select) => select.value)
+    .filter(Boolean);
+
+  selects.forEach((select) => {
+    Array.from(select.options).forEach((option) => {
+      if (!option.value) {
+        return;
+      }
+
+      option.disabled =
+        option.value !== select.value &&
+        selectedValues.includes(option.value);
+    });
+  });
+}
+
+function focusFirstMatchPointInput() {
+  const firstPointInput = matchEntryList.querySelector(
+    ".match-point-input",
+  );
+
+  if (firstPointInput) {
+    window.setTimeout(() => firstPointInput.focus(), 0);
+  }
+}
+
 function prepareMatchForm({ match = null } = {}) {
   if (!currentEvent) {
     showEventListScreen();
@@ -1142,12 +1237,46 @@ function prepareMatchForm({ match = null } = {}) {
   requiredPointTotal.textContent =
     `${rule.requiredPointTotal.toLocaleString("ja-JP")}点`;
 
+  let initialResults = match ? match.results : [];
+  let initialPlayerIds = [];
+  let restoreSource = "";
+
+  if (!match) {
+    const quickEntry = getQuickEntryPlayerIds(
+      players,
+      rule.playerCount,
+    );
+    initialPlayerIds = quickEntry.playerIds;
+    restoreSource = quickEntry.source;
+  }
+
   renderMatchEntryRows(
     players,
     rule.playerCount,
-    match ? match.results : [],
+    initialResults,
+    initialPlayerIds,
+    match ? match.entryOrderPlayerIds : [],
   );
+
+  matchMemberRestoreMessage.hidden = true;
+  matchMemberRestoreMessage.textContent = "";
+
+  if (restoreSource === "latest-match") {
+    matchMemberRestoreMessage.textContent =
+      "前回の対戦メンバーをセットしました。持ち点から入力できます。";
+    matchMemberRestoreMessage.hidden = false;
+  } else if (restoreSource === "all-players") {
+    matchMemberRestoreMessage.textContent =
+      "登録プレイヤー全員をセットしました。持ち点から入力できます。";
+    matchMemberRestoreMessage.hidden = false;
+  }
+
+  updatePlayerSelectAvailability();
   updateMatchPreview();
+
+  if (!match && initialPlayerIds.length > 0) {
+    focusFirstMatchPointInput();
+  }
 }
 
 function showMatchCreateScreen() {
@@ -1163,12 +1292,30 @@ function renderMatchEntryRows(
   players,
   playerCount,
   existingResults = [],
+  initialPlayerIds = [],
+  savedEntryOrderPlayerIds = [],
 ) {
   matchEntryList.replaceChildren();
 
-  const resultsByRank = [...existingResults].sort(
-    (a, b) => Number(a.rank) - Number(b.rank),
+  const resultMap = new Map(
+    existingResults.map((result) => [
+      result.playerId,
+      result,
+    ]),
   );
+
+  const resultPlayerIds = existingResults
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(a.rank) - Number(b.rank),
+    )
+    .map((result) => result.playerId);
+
+  const orderedPlayerIds =
+    savedEntryOrderPlayerIds.length === playerCount
+      ? savedEntryOrderPlayerIds
+      : resultPlayerIds;
 
   for (let index = 0; index < playerCount; index += 1) {
     const row = document.createElement("div");
@@ -1222,15 +1369,48 @@ function renderMatchEntryRows(
       option.textContent = player ? player.name : "";
     });
 
-    const existingResult = resultsByRank[index];
+    const selectedPlayerId =
+      orderedPlayerIds[index] ||
+      initialPlayerIds[index] ||
+      "";
+
+    if (selectedPlayerId) {
+      select.value = selectedPlayerId;
+    }
+
+    const existingResult = resultMap.get(selectedPlayerId);
 
     if (existingResult) {
-      select.value = existingResult.playerId;
       pointInput.value = String(existingResult.points);
     }
 
-    select.addEventListener("change", updateMatchPreview);
+    select.addEventListener("change", () => {
+      updatePlayerSelectAvailability();
+      updateMatchPreview();
+    });
     pointInput.addEventListener("input", updateMatchPreview);
+    pointInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+
+      event.preventDefault();
+
+      const pointInputs = Array.from(
+        matchEntryList.querySelectorAll(
+          ".match-point-input",
+        ),
+      );
+      const currentIndex = pointInputs.indexOf(pointInput);
+      const nextInput = pointInputs[currentIndex + 1];
+
+      if (nextInput) {
+        nextInput.focus();
+        nextInput.select();
+      } else {
+        matchSaveButton.focus();
+      }
+    });
 
     matchEntryList.appendChild(row);
   }
@@ -1446,6 +1626,9 @@ function handleMatchCreateSubmit(event) {
         ...matches[targetIndex],
         gameType: currentEvent.gameType,
         umaPreset: currentEvent.umaPreset,
+        entryOrderPlayerIds: entries.map(
+          (entry) => entry.playerId,
+        ),
         results,
         updatedAt: now,
       };
@@ -1455,6 +1638,9 @@ function handleMatchCreateSubmit(event) {
         eventId: currentEvent.eventId,
         gameType: currentEvent.gameType,
         umaPreset: currentEvent.umaPreset,
+        entryOrderPlayerIds: entries.map(
+          (entry) => entry.playerId,
+        ),
         results,
         createdAt: now,
         updatedAt: now,

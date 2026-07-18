@@ -1635,3 +1635,23 @@ select:focus {
   cursor: not-allowed;
   opacity: 0.55;
 }
+
+
+/* STEP7-3：半荘登録の高速化 */
+.match-member-restore-message {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+
+  color: var(--color-primary-dark);
+  background: #f1f8f3;
+  border: 1px solid #cfe3d4;
+  border-radius: var(--radius-small);
+
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.match-player-select option:disabled {
+  color: #a0a7a2;
+}

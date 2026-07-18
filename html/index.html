@@ -106,7 +106,7 @@
       </section>
 
       <section id="home-screen" class="home-screen" hidden>
-        <header class="home-header">
+        <header class="app-header">
           <div class="home-brand">
             <div class="home-brand-mark" aria-hidden="true">I</div>
 
@@ -132,11 +132,7 @@
           </section>
 
           <section class="home-menu" aria-label="メインメニュー">
-            <button
-              id="event-list-button"
-              class="menu-card"
-              type="button"
-            >
+            <button id="event-list-button" class="menu-card" type="button">
               <span class="menu-icon" aria-hidden="true">☷</span>
 
               <span class="menu-text">
@@ -169,6 +165,77 @@
             role="status"
             aria-live="polite"
           ></p>
+        </div>
+      </section>
+
+      <section id="event-list-screen" class="page-screen" hidden>
+        <header class="page-header">
+          <button
+            id="event-list-back-button"
+            class="icon-button"
+            type="button"
+            aria-label="ホームへ戻る"
+          >
+            ‹
+          </button>
+
+          <div class="page-heading">
+            <h1>イベント一覧</h1>
+            <p>開催中・過去のイベント</p>
+          </div>
+
+          <button
+            id="event-list-create-button"
+            class="header-action-button"
+            type="button"
+          >
+            新規作成
+          </button>
+        </header>
+
+        <div class="page-content">
+          <div class="segment-control" role="tablist" aria-label="イベント区分">
+            <button
+              id="active-events-tab"
+              class="segment-button is-active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              data-status="active"
+            >
+              開催中
+              <span id="active-event-count" class="segment-count">0</span>
+            </button>
+
+            <button
+              id="completed-events-tab"
+              class="segment-button"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              data-status="completed"
+            >
+              終了
+              <span id="completed-event-count" class="segment-count">0</span>
+            </button>
+          </div>
+
+          <section id="event-list-container" class="event-list"></section>
+
+          <section id="event-empty-state" class="empty-state" hidden>
+            <div class="empty-state-icon" aria-hidden="true">☷</div>
+            <h2 id="empty-state-title">開催中のイベントはありません</h2>
+            <p id="empty-state-description">
+              新しいイベントを作成すると、ここに表示されます。
+            </p>
+            <button
+              id="empty-state-create-button"
+              class="primary-button compact-button"
+              type="button"
+            >
+              新しいイベントを作成
+            </button>
+          </section>
         </div>
       </section>
     </main>

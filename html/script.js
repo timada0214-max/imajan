@@ -2,9 +2,11 @@
 
 const SESSION_STORAGE_KEY = "imajan.session";
 const LOCAL_USERS_STORAGE_KEY = "imajan.localUsers";
+const LOCAL_EVENTS_STORAGE_KEY = "imajan.localEvents";
 
 const loginScreen = document.getElementById("login-screen");
 const homeScreen = document.getElementById("home-screen");
+const eventListScreen = document.getElementById("event-list-screen");
 
 const loginForm = document.getElementById("login-form");
 const nicknameInput = document.getElementById("nickname");
@@ -23,6 +25,36 @@ const logoutButton = document.getElementById("logout-button");
 const eventListButton = document.getElementById("event-list-button");
 const createEventButton = document.getElementById("create-event-button");
 const homeMessage = document.getElementById("home-message");
+
+const eventListBackButton = document.getElementById(
+  "event-list-back-button",
+);
+const eventListCreateButton = document.getElementById(
+  "event-list-create-button",
+);
+const emptyStateCreateButton = document.getElementById(
+  "empty-state-create-button",
+);
+
+const activeEventsTab = document.getElementById("active-events-tab");
+const completedEventsTab = document.getElementById(
+  "completed-events-tab",
+);
+const activeEventCount = document.getElementById("active-event-count");
+const completedEventCount = document.getElementById(
+  "completed-event-count",
+);
+const eventListContainer = document.getElementById(
+  "event-list-container",
+);
+const eventEmptyState = document.getElementById("event-empty-state");
+const emptyStateTitle = document.getElementById("empty-state-title");
+const emptyStateDescription = document.getElementById(
+  "empty-state-description",
+);
+
+let currentUser = null;
+let currentEventStatus = "active";
 
 /**
  * 現在の画面がGAS HTML Service上で動いているかを判定します。
@@ -168,12 +200,22 @@ function clearSession() {
 }
 
 /**
+ * すべての画面を非表示にします。
+ */
+function hideAllScreens() {
+  loginScreen.hidden = true;
+  homeScreen.hidden = true;
+  eventListScreen.hidden = true;
+}
+
+/**
  * ログイン画面を表示します。
  */
 function showLoginScreen() {
-  homeScreen.hidden = true;
+  hideAllScreens();
   loginScreen.hidden = false;
 
+  currentUser = null;
   welcomeNickname.textContent = "";
   homeMessage.textContent = "";
   homeMessage.className = "home-message";
@@ -186,10 +228,16 @@ function showLoginScreen() {
 /**
  * ホーム画面を表示します。
  */
-function showHomeScreen(user) {
-  loginScreen.hidden = true;
+function showHomeScreen(user = currentUser) {
+  if (!user) {
+    showLoginScreen();
+    return;
+  }
+
+  hideAllScreens();
   homeScreen.hidden = false;
 
+  currentUser = user;
   welcomeNickname.textContent = user.nickname;
 
   loginForm.reset();
@@ -202,6 +250,21 @@ function showHomeScreen(user) {
     "aria-label",
     "暗証番号を表示する",
   );
+}
+
+/**
+ * イベント一覧画面を表示します。
+ */
+function showEventListScreen() {
+  if (!currentUser) {
+    showLoginScreen();
+    return;
+  }
+
+  hideAllScreens();
+  eventListScreen.hidden = false;
+
+  renderEventList();
 }
 
 /**
@@ -260,6 +323,26 @@ function saveLocalUsers(users) {
     LOCAL_USERS_STORAGE_KEY,
     JSON.stringify(users),
   );
+}
+
+/**
+ * ローカル確認用のイベント一覧を取得します。
+ */
+function getLocalEvents() {
+  const savedEvents = localStorage.getItem(
+    LOCAL_EVENTS_STORAGE_KEY,
+  );
+
+  if (!savedEvents) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(savedEvents);
+  } catch (error) {
+    console.warn("ローカルイベントの読み込みに失敗しました。", error);
+    return [];
+  }
 }
 
 /**
@@ -354,6 +437,161 @@ async function requestSignup(payload) {
 }
 
 /**
+ * 日付を画面表示用に整形します。
+ */
+function formatDate(dateText) {
+  if (!dateText) {
+    return "日付未設定";
+  }
+
+  const date = new Date(dateText);
+
+  if (Number.isNaN(date.getTime())) {
+    return dateText;
+  }
+
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+/**
+ * イベントカードを生成します。
+ */
+function createEventCard(event) {
+  const button = document.createElement("button");
+  button.className = "event-card";
+  button.type = "button";
+
+  const statusText =
+    event.status === "completed" ? "終了" : "開催中";
+  const statusClass =
+    event.status === "completed"
+      ? "event-status is-completed"
+      : "event-status";
+
+  const gameType =
+    event.gameType === "sanma" ? "三麻" : "四麻";
+
+  button.innerHTML = `
+    <span class="event-card-main">
+      <span class="${statusClass}">${statusText}</span>
+      <h2 class="event-title"></h2>
+      <span class="event-meta">
+        <span>${gameType}</span>
+        <span>${formatDate(event.updatedAt || event.createdAt)}</span>
+        <span>${event.matchCount || 0}半荘</span>
+      </span>
+    </span>
+    <span class="event-card-arrow" aria-hidden="true">›</span>
+  `;
+
+  button.querySelector(".event-title").textContent =
+    event.name || "名称未設定のイベント";
+
+  button.addEventListener("click", () => {
+    window.alert(
+      "イベント詳細画面は、イベント作成画面の後に実装します。",
+    );
+  });
+
+  return button;
+}
+
+/**
+ * イベント一覧を描画します。
+ */
+function renderEventList() {
+  const events = getLocalEvents().filter(
+    (event) => !event.ownerUserId || event.ownerUserId === currentUser.userId,
+  );
+
+  const activeEvents = events.filter(
+    (event) => event.status !== "completed",
+  );
+  const completedEvents = events.filter(
+    (event) => event.status === "completed",
+  );
+
+  activeEventCount.textContent = String(activeEvents.length);
+  completedEventCount.textContent = String(
+    completedEvents.length,
+  );
+
+  const filteredEvents =
+    currentEventStatus === "completed"
+      ? completedEvents
+      : activeEvents;
+
+  eventListContainer.replaceChildren();
+
+  if (filteredEvents.length === 0) {
+    eventEmptyState.hidden = false;
+
+    if (currentEventStatus === "completed") {
+      emptyStateTitle.textContent =
+        "終了したイベントはありません";
+      emptyStateDescription.textContent =
+        "イベントを終了すると、ここに表示されます。";
+      emptyStateCreateButton.hidden = true;
+    } else {
+      emptyStateTitle.textContent =
+        "開催中のイベントはありません";
+      emptyStateDescription.textContent =
+        "新しいイベントを作成すると、ここに表示されます。";
+      emptyStateCreateButton.hidden = false;
+    }
+
+    return;
+  }
+
+  eventEmptyState.hidden = true;
+
+  filteredEvents
+    .sort((a, b) => {
+      const aDate = new Date(
+        a.updatedAt || a.createdAt || 0,
+      ).getTime();
+      const bDate = new Date(
+        b.updatedAt || b.createdAt || 0,
+      ).getTime();
+
+      return bDate - aDate;
+    })
+    .forEach((event) => {
+      eventListContainer.appendChild(createEventCard(event));
+    });
+}
+
+/**
+ * イベント一覧の表示区分を切り替えます。
+ */
+function switchEventStatus(status) {
+  currentEventStatus = status;
+
+  const isActive = status === "active";
+
+  activeEventsTab.classList.toggle("is-active", isActive);
+  completedEventsTab.classList.toggle(
+    "is-active",
+    !isActive,
+  );
+
+  activeEventsTab.setAttribute(
+    "aria-selected",
+    String(isActive),
+  );
+  completedEventsTab.setAttribute(
+    "aria-selected",
+    String(!isActive),
+  );
+
+  renderEventList();
+}
+
+/**
  * ログイン処理です。
  */
 async function handleLogin(event) {
@@ -425,7 +663,8 @@ async function handleSignup() {
   } finally {
     loginButton.disabled = false;
     signupButton.disabled = false;
-    signupButton.textContent = "入力した内容で新規登録";
+    signupButton.textContent =
+      "入力した内容で新規登録";
   }
 }
 
@@ -466,11 +705,19 @@ function handleLogout() {
 }
 
 /**
- * 次工程で実装する画面への仮導線です。
+ * 次工程で実装するイベント作成画面への仮導線です。
  */
-function handlePendingFeature(featureName) {
+function handleCreateEvent() {
   showHomeMessage(
-    `${featureName}は次のSTEPで実装します。`,
+    "イベント作成画面は次のSTEPで実装します。",
+  );
+
+  if (!homeScreen.hidden) {
+    return;
+  }
+
+  window.alert(
+    "イベント作成画面は次のSTEPで実装します。",
   );
 }
 
@@ -481,6 +728,7 @@ function initializeApp() {
   const savedUser = loadSession();
 
   if (savedUser) {
+    currentUser = savedUser;
     showHomeScreen(savedUser);
     return;
   }
@@ -496,12 +744,34 @@ togglePinButton.addEventListener(
 signupButton.addEventListener("click", handleSignup);
 logoutButton.addEventListener("click", handleLogout);
 
-eventListButton.addEventListener("click", () => {
-  handlePendingFeature("イベント一覧");
+eventListButton.addEventListener(
+  "click",
+  showEventListScreen,
+);
+createEventButton.addEventListener(
+  "click",
+  handleCreateEvent,
+);
+
+eventListBackButton.addEventListener("click", () => {
+  showHomeScreen();
 });
 
-createEventButton.addEventListener("click", () => {
-  handlePendingFeature("イベント作成");
+eventListCreateButton.addEventListener(
+  "click",
+  handleCreateEvent,
+);
+emptyStateCreateButton.addEventListener(
+  "click",
+  handleCreateEvent,
+);
+
+activeEventsTab.addEventListener("click", () => {
+  switchEventStatus("active");
+});
+
+completedEventsTab.addEventListener("click", () => {
+  switchEventStatus("completed");
 });
 
 nicknameInput.addEventListener("input", () => {

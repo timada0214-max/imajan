@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
@@ -17,21 +17,19 @@
 
   <body>
     <main class="app">
-      <section class="login-screen">
+      <section id="login-screen" class="login-screen">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">I</div>
 
           <h1 class="brand-name">IMAJAN</h1>
 
-          <p class="brand-description">
-            仲間内の麻雀リーグを、もっと簡単に。
-          </p>
+          <p class="brand-description">仲間内の麻雀リーグを、もっと簡単に。</p>
         </div>
 
         <div class="login-card">
           <div class="card-heading">
             <h2>ログイン</h2>
-            <p>ニックネームとPINを入力してください</p>
+            <p>ニックネームと暗証番号を入力してください</p>
           </div>
 
           <form id="login-form" novalidate>
@@ -51,14 +49,14 @@
             </div>
 
             <div class="form-group">
-              <label for="pin">PIN</label>
+              <label for="pin">暗証番号（4桁）</label>
 
               <div class="pin-field">
                 <input
                   id="pin"
                   name="pin"
                   type="password"
-                  placeholder="4桁の数字"
+                  placeholder="4桁の数字を入力"
                   inputmode="numeric"
                   autocomplete="current-password"
                   maxlength="4"
@@ -68,7 +66,7 @@
                   id="toggle-pin"
                   class="pin-toggle"
                   type="button"
-                  aria-label="PINを表示する"
+                  aria-label="暗証番号を表示する"
                 >
                   表示
                 </button>
@@ -93,14 +91,85 @@
             <span>または</span>
           </div>
 
+          <p class="signup-description">
+            初めての方は、上の2項目を入力して登録してください。
+          </p>
+
           <button id="signup-button" class="secondary-button" type="button">
-            はじめて利用する
+            入力した内容で新規登録
           </button>
         </div>
 
         <p class="login-note">
           身内で使うための、シンプルな麻雀成績管理ツールです。
         </p>
+      </section>
+
+      <section id="home-screen" class="home-screen" hidden>
+        <header class="home-header">
+          <div class="home-brand">
+            <div class="home-brand-mark" aria-hidden="true">I</div>
+
+            <div>
+              <p class="home-brand-name">IMAJAN</p>
+              <p class="home-brand-caption">麻雀成績管理</p>
+            </div>
+          </div>
+
+          <button id="logout-button" class="text-button" type="button">
+            ログアウト
+          </button>
+        </header>
+
+        <div class="home-content">
+          <section class="welcome-card">
+            <p class="welcome-label">ログイン中</p>
+            <h1>
+              こんにちは、<br />
+              <span id="welcome-nickname"></span>さん
+            </h1>
+            <p>イベントを選ぶか、新しいイベントを作成してください。</p>
+          </section>
+
+          <section class="home-menu" aria-label="メインメニュー">
+            <button
+              id="event-list-button"
+              class="menu-card"
+              type="button"
+            >
+              <span class="menu-icon" aria-hidden="true">☷</span>
+
+              <span class="menu-text">
+                <strong>イベント一覧</strong>
+                <small>開催中・過去のイベントを確認</small>
+              </span>
+
+              <span class="menu-arrow" aria-hidden="true">›</span>
+            </button>
+
+            <button
+              id="create-event-button"
+              class="menu-card menu-card-primary"
+              type="button"
+            >
+              <span class="menu-icon" aria-hidden="true">＋</span>
+
+              <span class="menu-text">
+                <strong>新しいイベントを作成</strong>
+                <small>リーグ戦や当日対戦を始める</small>
+              </span>
+
+              <span class="menu-arrow" aria-hidden="true">›</span>
+            </button>
+          </section>
+
+          <p
+            id="home-message"
+            class="home-message"
+            role="status"
+            aria-live="polite"
+          ></p>
+        </div>
       </section>
     </main>
 

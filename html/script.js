@@ -18,6 +18,9 @@ const adjustmentCreateScreen = document.getElementById(
   "adjustment-create-screen",
 );
 
+const loadingOverlay = document.getElementById("loading-overlay");
+const loadingMessage = document.getElementById("loading-message");
+
 const loginForm = document.getElementById("login-form");
 const nicknameInput = document.getElementById("nickname");
 const pinInput = document.getElementById("pin");
@@ -326,6 +329,9 @@ let standingsMode = "all";
 let selectedRangeRecordKeys = new Set();
 let rangeSelectionInitializedEventId = null;
 let currentEditingAdjustment = null;
+let loadingRequestCount = 0;
+let loadingShowTimer = null;
+let loadingLongWaitTimer = null;
 
 /**
  * 現在の画面がGAS HTML Service上で動いているかを判定します。
@@ -482,6 +488,49 @@ function hideAllScreens() {
   playerAddScreen.hidden = true;
   matchCreateScreen.hidden = true;
   adjustmentCreateScreen.hidden = true;
+}
+
+/**
+ * 通信が300ms以上続いたときだけ、共通ローディングを表示します。
+ * 5秒を超えた場合は、通信に時間がかかっている旨へ表示を切り替えます。
+ */
+function showLoading(message = "データを読み込んでいます…") {
+  loadingRequestCount += 1;
+
+  if (loadingRequestCount > 1) {
+    return;
+  }
+
+  window.clearTimeout(loadingShowTimer);
+  window.clearTimeout(loadingLongWaitTimer);
+
+  loadingMessage.textContent = message;
+  loadingShowTimer = window.setTimeout(() => {
+    loadingOverlay.hidden = false;
+  }, 300);
+
+  loadingLongWaitTimer = window.setTimeout(() => {
+    loadingMessage.textContent =
+      "通信に時間がかかっています。もう少しお待ちください…";
+  }, 5000);
+}
+
+/**
+ * 共通ローディングを閉じます。複数の通信が重なった場合にも対応します。
+ */
+function hideLoading() {
+  loadingRequestCount = Math.max(0, loadingRequestCount - 1);
+
+  if (loadingRequestCount > 0) {
+    return;
+  }
+
+  window.clearTimeout(loadingShowTimer);
+  window.clearTimeout(loadingLongWaitTimer);
+  loadingShowTimer = null;
+  loadingLongWaitTimer = null;
+  loadingOverlay.hidden = true;
+  loadingMessage.textContent = "データを読み込んでいます…";
 }
 
 /**
@@ -712,6 +761,7 @@ async function showEventListScreen() {
   eventListScreen.hidden = false;
 
   renderEventList();
+  showLoading("イベントを読み込んでいます…");
 
   try {
     await loadEventsFromSheet();
@@ -726,6 +776,8 @@ async function showEventListScreen() {
       error.message ||
       "通信状態を確認して、もう一度お試しください。";
     emptyStateCreateButton.hidden = false;
+  } finally {
+    hideLoading();
   }
 }
 
@@ -1444,6 +1496,7 @@ async function showEventDetailScreen(event = currentEvent) {
 
   hideAllScreens();
   eventDetailScreen.hidden = false;
+  showLoading("プレイヤーを読み込んでいます…");
 
   try {
     await loadPlayersFromSheet();
@@ -1452,6 +1505,8 @@ async function showEventDetailScreen(event = currentEvent) {
     console.error(error);
     playerCountText.textContent =
       error.message || "プレイヤーを読み込めませんでした。";
+  } finally {
+    hideLoading();
   }
 }
 

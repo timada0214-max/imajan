@@ -1,0 +1,375 @@
+:root {
+  --color-primary: #166534;
+  --color-primary-dark: #14532d;
+  --color-primary-light: #dcfce7;
+
+  --color-background: #f4f7f5;
+  --color-surface: #ffffff;
+
+  --color-text: #17211b;
+  --color-text-secondary: #66736b;
+  --color-border: #dce5df;
+
+  --color-error: #b91c1c;
+  --color-error-background: #fef2f2;
+
+  --color-success: #166534;
+  --color-success-background: #f0fdf4;
+
+  --shadow-card:
+    0 20px 45px rgba(20, 83, 45, 0.08),
+    0 4px 12px rgba(20, 83, 45, 0.05);
+
+  --radius-large: 24px;
+  --radius-medium: 14px;
+  --radius-small: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--color-background);
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0;
+
+  color: var(--color-text);
+  background:
+    radial-gradient(
+      circle at top,
+      rgba(220, 252, 231, 0.8),
+      transparent 420px
+    ),
+    var(--color-background);
+
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP",
+    "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+}
+
+.app {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.login-screen {
+  width: min(100%, 480px);
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0 auto;
+  padding:
+    max(38px, env(safe-area-inset-top))
+    20px
+    max(24px, env(safe-area-inset-bottom));
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.brand {
+  margin-bottom: 28px;
+  text-align: center;
+}
+
+.brand-mark {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 14px;
+
+  display: grid;
+  place-items: center;
+
+  color: #ffffff;
+  background: var(--color-primary);
+  border-radius: 18px;
+
+  font-size: 30px;
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgba(22, 101, 52, 0.22);
+}
+
+.brand-name {
+  margin: 0;
+
+  color: var(--color-primary-dark);
+
+  font-size: clamp(30px, 9vw, 40px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+}
+
+.brand-description {
+  margin: 10px 0 0;
+
+  color: var(--color-text-secondary);
+
+  font-size: 14px;
+}
+
+.login-card {
+  padding: 26px 22px;
+
+  background: var(--color-surface);
+  border: 1px solid rgba(220, 229, 223, 0.9);
+  border-radius: var(--radius-large);
+  box-shadow: var(--shadow-card);
+}
+
+.card-heading {
+  margin-bottom: 24px;
+}
+
+.card-heading h2 {
+  margin: 0;
+
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.card-heading p {
+  margin: 6px 0 0;
+
+  color: var(--color-text-secondary);
+
+  font-size: 14px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+
+  font-size: 14px;
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  min-height: 52px;
+  padding: 13px 14px;
+
+  color: var(--color-text);
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-medium);
+  outline: none;
+
+  font-size: 16px;
+
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+input::placeholder {
+  color: #9aa5a0;
+}
+
+input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(22, 101, 52, 0.1);
+}
+
+input.input-error {
+  background: var(--color-error-background);
+  border-color: var(--color-error);
+}
+
+.pin-field {
+  position: relative;
+}
+
+.pin-field input {
+  padding-right: 66px;
+}
+
+.pin-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  min-width: 50px;
+  padding: 8px 10px;
+
+  color: var(--color-primary);
+  background: transparent;
+  border-radius: 8px;
+  transform: translateY(-50%);
+
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pin-toggle:active {
+  background: var(--color-primary-light);
+}
+
+.field-error {
+  min-height: 18px;
+  margin: 6px 2px 0;
+
+  color: var(--color-error);
+
+  font-size: 12px;
+}
+
+.form-message {
+  display: none;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+
+  border-radius: var(--radius-small);
+
+  font-size: 14px;
+}
+
+.form-message.is-error {
+  display: block;
+
+  color: var(--color-error);
+  background: var(--color-error-background);
+}
+
+.form-message.is-success {
+  display: block;
+
+  color: var(--color-success);
+  background: var(--color-success-background);
+}
+
+.primary-button,
+.secondary-button {
+  width: 100%;
+  min-height: 54px;
+  padding: 13px 16px;
+
+  border-radius: var(--radius-medium);
+
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+
+  transition:
+    transform 0.1s ease,
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.primary-button {
+  color: #ffffff;
+  background: var(--color-primary);
+  box-shadow: 0 8px 18px rgba(22, 101, 52, 0.18);
+}
+
+.primary-button:hover {
+  background: var(--color-primary-dark);
+}
+
+.primary-button:active,
+.secondary-button:active {
+  transform: translateY(1px);
+}
+
+.primary-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.secondary-button {
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.secondary-button:hover {
+  background: #bbf7d0;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0;
+
+  color: var(--color-text-secondary);
+
+  font-size: 12px;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+
+  background: var(--color-border);
+}
+
+.login-note {
+  margin: 22px 8px 0;
+
+  color: var(--color-text-secondary);
+  text-align: center;
+
+  font-size: 12px;
+}
+
+@media (min-width: 600px) {
+  .login-screen {
+    padding-right: 28px;
+    padding-left: 28px;
+  }
+
+  .login-card {
+    padding: 32px;
+  }
+}
+
+@media (max-height: 700px) {
+  .login-screen {
+    justify-content: flex-start;
+  }
+
+  .brand {
+    margin-bottom: 20px;
+  }
+
+  .brand-mark {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 10px;
+
+    border-radius: 15px;
+
+    font-size: 25px;
+  }
+
+  .brand-description {
+    margin-top: 6px;
+  }
+}

@@ -1,132 +1,109 @@
 <!DOCTYPE html>
 <html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
 
-<head>
-  <base target="_top">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
 
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#14532d" />
 
-  <title>IMAJAN</title>
+    <title>IMAJAN｜麻雀成績管理</title>
 
-  <?!= include('style'); ?>
-</head>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
 
-<body>
+  <body>
+    <main class="app">
+      <section class="login-screen">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">I</div>
 
-  <!-- ==========================
-       起動画面
-  =========================== -->
-  <section id="loading-screen">
+          <h1 class="brand-name">IMAJAN</h1>
 
-    <div class="logo">
-      🀄
-    </div>
+          <p class="brand-description">
+            仲間内の麻雀リーグを、もっと簡単に。
+          </p>
+        </div>
 
-    <h1>IMAJAN</h1>
+        <div class="login-card">
+          <div class="card-heading">
+            <h2>ログイン</h2>
+            <p>ニックネームとPINを入力してください</p>
+          </div>
 
-    <p>
-      麻雀の対局を、もっと簡単に。
-    </p>
+          <form id="login-form" novalidate>
+            <div class="form-group">
+              <label for="nickname">ニックネーム</label>
 
-  </section>
+              <input
+                id="nickname"
+                name="nickname"
+                type="text"
+                placeholder="例：いまだ"
+                autocomplete="username"
+                maxlength="20"
+              />
 
+              <p id="nickname-error" class="field-error"></p>
+            </div>
 
-  <!-- ==========================
-       ログイン画面
-  =========================== -->
-  <section id="login-screen" hidden>
+            <div class="form-group">
+              <label for="pin">PIN</label>
 
-    <div class="card">
+              <div class="pin-field">
+                <input
+                  id="pin"
+                  name="pin"
+                  type="password"
+                  placeholder="4桁の数字"
+                  inputmode="numeric"
+                  autocomplete="current-password"
+                  maxlength="4"
+                />
 
-      <h2>ログイン</h2>
+                <button
+                  id="toggle-pin"
+                  class="pin-toggle"
+                  type="button"
+                  aria-label="PINを表示する"
+                >
+                  表示
+                </button>
+              </div>
 
-      <div class="form-group">
+              <p id="pin-error" class="field-error"></p>
+            </div>
 
-        <label>
-          ニックネーム
-        </label>
+            <p
+              id="form-message"
+              class="form-message"
+              role="status"
+              aria-live="polite"
+            ></p>
 
-        <input
-          id="nickname"
-          type="text"
-          maxlength="30"
-          placeholder="ニックネーム">
+            <button id="login-button" class="primary-button" type="submit">
+              ログイン
+            </button>
+          </form>
 
-      </div>
+          <div class="divider">
+            <span>または</span>
+          </div>
 
+          <button id="signup-button" class="secondary-button" type="button">
+            はじめて利用する
+          </button>
+        </div>
 
-      <div class="form-group">
-
-        <label>
-          PIN
-        </label>
-
-        <input
-          id="pin"
-          type="password"
-          maxlength="4"
-          placeholder="4桁">
-
-      </div>
-
-
-      <button id="login-button">
-
-        ログイン
-
-      </button>
-
-    </div>
-
-  </section>
-
-
-  <!-- ==========================
-       イベント一覧
-  =========================== -->
-  <section id="event-screen" hidden>
-
-    <header>
-
-      <h2>
-
-        イベント一覧
-
-      </h2>
-
-    </header>
-
-
-    <main>
-
-      <button id="create-event-button">
-
-        ＋ 新しいイベント
-
-      </button>
-
-
-      <div id="event-list">
-
-      </div>
-
+        <p class="login-note">
+          身内で使うための、シンプルな麻雀成績管理ツールです。
+        </p>
+      </section>
     </main>
 
-  </section>
-
-
-  <!-- ==========================
-       Toast
-  =========================== -->
-
-  <div id="toast" hidden>
-
-  </div>
-
-
-  <?!= include('script'); ?>
-
-</body>
-
+    <script src="./script.js"></script>
+  </body>
 </html>

@@ -1459,3 +1459,112 @@ select:focus {
     text-align: left;
   }
 }
+
+
+/* STEP7-1：プレイヤー成績表 */
+.player-ranking-list {
+  width: 100%;
+
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.standings-table {
+  min-width: 680px;
+
+  display: grid;
+  gap: 7px;
+}
+
+.standings-table.is-sanma {
+  min-width: 620px;
+}
+
+.standings-row {
+  padding: 11px 10px;
+
+  display: grid;
+  grid-template-columns:
+    44px minmax(118px, 1.4fr) 48px
+    42px 42px 42px 42px 72px 72px;
+  align-items: center;
+  gap: 5px;
+
+  background: #f8faf9;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+
+  color: var(--color-text-secondary);
+
+  font-size: 12px;
+  text-align: center;
+}
+
+.standings-table.is-sanma .standings-row {
+  grid-template-columns:
+    44px minmax(118px, 1.4fr) 48px
+    42px 42px 42px 72px 72px;
+}
+
+.standings-header {
+  padding-top: 8px;
+  padding-bottom: 8px;
+
+  color: var(--color-text-secondary);
+  background: var(--color-primary-light);
+  border-color: #c8ddcf;
+
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.standings-rank {
+  width: 30px;
+  height: 30px;
+  margin: 0 auto;
+
+  display: grid;
+  place-items: center;
+
+  color: var(--color-primary-dark);
+  background: var(--color-primary-light);
+  border-radius: 9px;
+
+  font-weight: 800;
+}
+
+.standings-player {
+  overflow: hidden;
+
+  color: var(--color-text);
+
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standings-score {
+  color: var(--color-primary-dark);
+
+  font-size: 13px;
+  text-align: right;
+}
+
+@media (max-width: 420px) {
+  .detail-section:has(.player-ranking-list) {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .player-ranking-list {
+    padding-bottom: 4px;
+  }
+
+  .standings-row {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+}

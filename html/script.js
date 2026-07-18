@@ -798,16 +798,11 @@ function renderEventDetail() {
     return;
   }
 
+  rebuildPlayerStatsForEvent(currentEvent.eventId);
+
   const players = getLocalPlayers()
     .filter((player) => player.eventId === currentEvent.eventId)
-    .sort((a, b) => {
-      if ((b.totalScore || 0) !== (a.totalScore || 0)) {
-        return (b.totalScore || 0) - (a.totalScore || 0);
-      }
-
-      return new Date(a.createdAt).getTime() -
-        new Date(b.createdAt).getTime();
-    });
+    .sort(comparePlayerStandings);
 
   const eventTypeText =
     currentEvent.eventType === "single"
@@ -829,7 +824,9 @@ function renderEventDetail() {
       ? "ウマ・オカなし"
       : currentEvent.umaPreset;
 
-  playerCountText.textContent = `${players.length}人登録`;
+  playerCountText.textContent =
+    `${players.length}人登録・合計スコア順`;
+
   const matches = getLocalMatches()
     .filter((match) => match.eventId === currentEvent.eventId)
     .sort(
@@ -841,6 +838,102 @@ function renderEventDetail() {
   matchCountText.textContent = `${matches.length}半荘`;
 
   renderMatchHistory(matches);
+  renderPlayerStandings(players);
+}
+
+function comparePlayerStandings(a, b) {
+  const scoreDifference =
+    (b.totalScore || 0) - (a.totalScore || 0);
+
+  if (scoreDifference !== 0) {
+    return scoreDifference;
+  }
+
+  const aAverage =
+    (a.matchCount || 0) > 0
+      ? a.averageRank
+      : Number.POSITIVE_INFINITY;
+  const bAverage =
+    (b.matchCount || 0) > 0
+      ? b.averageRank
+      : Number.POSITIVE_INFINITY;
+
+  if (aAverage !== bAverage) {
+    return aAverage - bAverage;
+  }
+
+  const firstPlaceDifference =
+    (b.rankCounts?.[0] || 0) - (a.rankCounts?.[0] || 0);
+
+  if (firstPlaceDifference !== 0) {
+    return firstPlaceDifference;
+  }
+
+  return (
+    new Date(a.createdAt).getTime() -
+    new Date(b.createdAt).getTime()
+  );
+}
+
+function rebuildPlayerStatsForEvent(eventId) {
+  const players = getLocalPlayers();
+  const eventPlayers = players.filter(
+    (player) => player.eventId === eventId,
+  );
+  const matches = getLocalMatches().filter(
+    (match) => match.eventId === eventId,
+  );
+
+  eventPlayers.forEach((player) => {
+    const playerResults = matches.flatMap((match) =>
+      match.results.filter(
+        (result) => result.playerId === player.playerId,
+      ),
+    );
+
+    const rankCounts = [0, 0, 0, 0];
+
+    playerResults.forEach((result) => {
+      const rankIndex = Number(result.rank) - 1;
+
+      if (rankIndex >= 0 && rankIndex < rankCounts.length) {
+        rankCounts[rankIndex] += 1;
+      }
+    });
+
+    const totalRank = playerResults.reduce(
+      (sum, result) => sum + Number(result.rank || 0),
+      0,
+    );
+    const totalScore = playerResults.reduce(
+      (sum, result) => sum + Number(result.finalScore || 0),
+      0,
+    );
+
+    player.matchCount = playerResults.length;
+    player.rankCounts = rankCounts;
+    player.averageRank =
+      playerResults.length > 0
+        ? Math.round(
+            (totalRank / playerResults.length) * 100,
+          ) / 100
+        : 0;
+    player.totalScore =
+      Math.round(totalScore * 10) / 10;
+  });
+
+  saveLocalPlayers(players);
+}
+
+function formatAverageRank(player) {
+  if (!(player.matchCount > 0)) {
+    return "-";
+  }
+
+  return Number(player.averageRank).toFixed(2);
+}
+
+function renderPlayerStandings(players) {
   playerRankingList.replaceChildren();
 
   if (players.length === 0) {
@@ -850,28 +943,53 @@ function renderEventDetail() {
 
   playerEmptyState.hidden = true;
 
+  const isSanma = currentEvent.gameType === "sanma";
+  const table = document.createElement("div");
+  table.className = isSanma
+    ? "standings-table is-sanma"
+    : "standings-table";
+
+  const header = document.createElement("div");
+  header.className = "standings-row standings-header";
+  header.innerHTML = `
+    <span>順位</span>
+    <span>プレイヤー</span>
+    <span>半荘</span>
+    <span>1位</span>
+    <span>2位</span>
+    <span>3位</span>
+    ${isSanma ? "" : "<span>4位</span>"}
+    <span>平均順位</span>
+    <span>合計</span>
+  `;
+  table.appendChild(header);
+
   players.forEach((player, index) => {
     const row = document.createElement("div");
-    row.className = "player-ranking-row";
+    row.className = "standings-row";
 
     row.innerHTML = `
-      <span class="player-rank">${index + 1}</span>
-      <span class="player-name"></span>
-      <span class="player-stats">
-        <span>${player.matchCount || 0}半荘</span>
-        <span class="player-score">${formatSignedScore(
-          player.totalScore || 0,
-        )}</span>
-      </span>
+      <span class="standings-rank">${index + 1}</span>
+      <span class="standings-player"></span>
+      <span>${player.matchCount || 0}</span>
+      <span>${player.rankCounts?.[0] || 0}</span>
+      <span>${player.rankCounts?.[1] || 0}</span>
+      <span>${player.rankCounts?.[2] || 0}</span>
+      ${isSanma ? "" : `<span>${player.rankCounts?.[3] || 0}</span>`}
+      <span>${formatAverageRank(player)}</span>
+      <strong class="standings-score">${formatSignedScore(
+        player.totalScore || 0,
+      )}</strong>
     `;
 
-    row.querySelector(".player-name").textContent =
+    row.querySelector(".standings-player").textContent =
       player.name;
 
-    playerRankingList.appendChild(row);
+    table.appendChild(row);
   });
-}
 
+  playerRankingList.appendChild(table);
+}
 
 function renderMatchHistory(matches) {
   matchHistoryList.replaceChildren();
@@ -1192,28 +1310,12 @@ function updateMatchPreview() {
   });
 }
 
-function updatePlayersFromMatch(results) {
-  const players = getLocalPlayers();
-  const now = new Date().toISOString();
+function updatePlayersFromMatch() {
+  if (!currentEvent) {
+    return;
+  }
 
-  results.forEach((result) => {
-    const player = players.find(
-      (item) => item.playerId === result.playerId,
-    );
-
-    if (!player) {
-      return;
-    }
-
-    player.matchCount = (player.matchCount || 0) + 1;
-    player.totalScore =
-      Math.round(
-        ((player.totalScore || 0) + result.finalScore) * 10,
-      ) / 10;
-    player.updatedAt = now;
-  });
-
-  saveLocalPlayers(players);
+  rebuildPlayerStatsForEvent(currentEvent.eventId);
 }
 
 function updateEventMatchCount() {
@@ -1267,7 +1369,7 @@ function handleMatchCreateSubmit(event) {
     });
 
     saveLocalMatches(matches);
-    updatePlayersFromMatch(results);
+    updatePlayersFromMatch();
     updateEventMatchCount();
     showEventDetailScreen();
   } catch (error) {
@@ -1358,6 +1460,8 @@ function handlePlayerAddSubmit(event) {
       eventId: currentEvent.eventId,
       name: playerNameInput.value.trim(),
       matchCount: 0,
+      rankCounts: [0, 0, 0, 0],
+      averageRank: 0,
       totalScore: 0,
       createdAt: now,
       updatedAt: now,

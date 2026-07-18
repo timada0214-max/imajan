@@ -472,7 +472,9 @@
               </button>
             </div>
 
-            <section class="mini-empty-state">
+            <div id="match-history-list" class="match-history-list"></div>
+
+            <section id="match-empty-state" class="mini-empty-state">
               <p>まだ半荘結果はありません。</p>
             </section>
           </section>
@@ -532,6 +534,79 @@
               type="submit"
             >
               プレイヤーを追加
+            </button>
+          </form>
+        </div>
+      </section>
+
+
+      <section id="match-create-screen" class="page-screen" hidden>
+        <header class="page-header">
+          <button
+            id="match-create-back-button"
+            class="icon-button"
+            type="button"
+            aria-label="イベント詳細へ戻る"
+          >
+            ‹
+          </button>
+
+          <div class="page-heading">
+            <h1>半荘結果登録</h1>
+            <p id="match-create-caption">参加者と最終持ち点を入力</p>
+          </div>
+
+          <span class="header-spacer" aria-hidden="true"></span>
+        </header>
+
+        <div class="page-content">
+          <form id="match-create-form" class="event-form" novalidate>
+            <section class="form-section">
+              <div class="section-heading">
+                <h2>対局結果</h2>
+                <p id="match-rule-description">
+                  4人のプレイヤーと最終持ち点を入力してください。
+                </p>
+              </div>
+
+              <div id="match-entry-list" class="match-entry-list"></div>
+
+              <div class="point-total-panel">
+                <div>
+                  <span>入力合計</span>
+                  <strong id="entered-point-total">0点</strong>
+                </div>
+                <div>
+                  <span>正しい合計</span>
+                  <strong id="required-point-total">100,000点</strong>
+                </div>
+              </div>
+
+              <p id="match-entry-error" class="field-error"></p>
+            </section>
+
+            <section id="match-preview-section" class="form-section" hidden>
+              <div class="section-heading">
+                <h2>計算結果</h2>
+                <p>持ち点から順位と最終スコアを自動計算します。</p>
+              </div>
+
+              <div id="match-result-preview" class="match-result-preview"></div>
+            </section>
+
+            <p
+              id="match-create-message"
+              class="form-message"
+              role="status"
+              aria-live="polite"
+            ></p>
+
+            <button
+              id="match-save-button"
+              class="primary-button"
+              type="submit"
+            >
+              半荘結果を保存
             </button>
           </form>
         </div>

@@ -4,6 +4,7 @@ const SESSION_STORAGE_KEY = "imajan.session";
 const LOCAL_USERS_STORAGE_KEY = "imajan.localUsers";
 const LOCAL_EVENTS_STORAGE_KEY = "imajan.localEvents";
 const LOCAL_PLAYERS_STORAGE_KEY = "imajan.localPlayers";
+const LOCAL_MATCHES_STORAGE_KEY = "imajan.localMatches";
 
 const loginScreen = document.getElementById("login-screen");
 const homeScreen = document.getElementById("home-screen");
@@ -11,6 +12,7 @@ const eventListScreen = document.getElementById("event-list-screen");
 const eventCreateScreen = document.getElementById("event-create-screen");
 const eventDetailScreen = document.getElementById("event-detail-screen");
 const playerAddScreen = document.getElementById("player-add-screen");
+const matchCreateScreen = document.getElementById("match-create-screen");
 
 const loginForm = document.getElementById("login-form");
 const nicknameInput = document.getElementById("nickname");
@@ -131,6 +133,50 @@ const playerAddMessage = document.getElementById(
 const playerSaveButton = document.getElementById(
   "player-save-button",
 );
+
+const matchHistoryList = document.getElementById(
+  "match-history-list",
+);
+const matchEmptyState = document.getElementById(
+  "match-empty-state",
+);
+const matchCreateBackButton = document.getElementById(
+  "match-create-back-button",
+);
+const matchCreateForm = document.getElementById(
+  "match-create-form",
+);
+const matchCreateCaption = document.getElementById(
+  "match-create-caption",
+);
+const matchRuleDescription = document.getElementById(
+  "match-rule-description",
+);
+const matchEntryList = document.getElementById(
+  "match-entry-list",
+);
+const enteredPointTotal = document.getElementById(
+  "entered-point-total",
+);
+const requiredPointTotal = document.getElementById(
+  "required-point-total",
+);
+const matchEntryError = document.getElementById(
+  "match-entry-error",
+);
+const matchPreviewSection = document.getElementById(
+  "match-preview-section",
+);
+const matchResultPreview = document.getElementById(
+  "match-result-preview",
+);
+const matchCreateMessage = document.getElementById(
+  "match-create-message",
+);
+const matchSaveButton = document.getElementById(
+  "match-save-button",
+);
+
 
 
 
@@ -291,6 +337,7 @@ function hideAllScreens() {
   eventCreateScreen.hidden = true;
   eventDetailScreen.hidden = true;
   playerAddScreen.hidden = true;
+  matchCreateScreen.hidden = true;
 }
 
 /**
@@ -455,6 +502,34 @@ function saveLocalPlayers(players) {
   localStorage.setItem(
     LOCAL_PLAYERS_STORAGE_KEY,
     JSON.stringify(players),
+  );
+}
+
+
+function getLocalMatches() {
+  const savedMatches = localStorage.getItem(
+    LOCAL_MATCHES_STORAGE_KEY,
+  );
+
+  if (!savedMatches) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(savedMatches);
+  } catch (error) {
+    console.warn(
+      "ローカル半荘結果の読み込みに失敗しました。",
+      error,
+    );
+    return [];
+  }
+}
+
+function saveLocalMatches(matches) {
+  localStorage.setItem(
+    LOCAL_MATCHES_STORAGE_KEY,
+    JSON.stringify(matches),
   );
 }
 
@@ -755,9 +830,17 @@ function renderEventDetail() {
       : currentEvent.umaPreset;
 
   playerCountText.textContent = `${players.length}人登録`;
-  matchCountText.textContent =
-    `${currentEvent.matchCount || 0}半荘`;
+  const matches = getLocalMatches()
+    .filter((match) => match.eventId === currentEvent.eventId)
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() -
+        new Date(a.createdAt).getTime(),
+    );
 
+  matchCountText.textContent = `${matches.length}半荘`;
+
+  renderMatchHistory(matches);
   playerRankingList.replaceChildren();
 
   if (players.length === 0) {
@@ -787,6 +870,417 @@ function renderEventDetail() {
 
     playerRankingList.appendChild(row);
   });
+}
+
+
+function renderMatchHistory(matches) {
+  matchHistoryList.replaceChildren();
+
+  if (matches.length === 0) {
+    matchEmptyState.hidden = false;
+    return;
+  }
+
+  matchEmptyState.hidden = true;
+
+  matches.forEach((match, index) => {
+    const card = document.createElement("article");
+    card.className = "match-history-card";
+
+    const playedAt = new Date(match.createdAt);
+    const dateText = playedAt.toLocaleString("ja-JP", {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    card.innerHTML = `
+      <div class="match-history-header">
+        <strong>第${matches.length - index}半荘</strong>
+        <span>${dateText}</span>
+      </div>
+      <div class="match-history-results"></div>
+    `;
+
+    const resultList = card.querySelector(
+      ".match-history-results",
+    );
+
+    match.results.forEach((result) => {
+      const row = document.createElement("div");
+      row.className = "match-history-result";
+
+      row.innerHTML = `
+        <span>${result.rank}位</span>
+        <span class="match-history-player"></span>
+        <span>${formatSignedScore(result.finalScore)}</span>
+      `;
+
+      row.querySelector(".match-history-player").textContent =
+        result.playerName;
+
+      resultList.appendChild(row);
+    });
+
+    matchHistoryList.appendChild(card);
+  });
+}
+
+function getMatchRule() {
+  if (currentEvent.gameType === "sanma") {
+    return {
+      playerCount: 3,
+      requiredPointTotal: 105000,
+      returnPoint: 35000,
+    };
+  }
+
+  return {
+    playerCount: 4,
+    requiredPointTotal: 100000,
+    returnPoint: 30000,
+  };
+}
+
+function getEventPlayers() {
+  return getLocalPlayers().filter(
+    (player) => player.eventId === currentEvent.eventId,
+  );
+}
+
+function showMatchCreateScreen() {
+  if (!currentEvent) {
+    showEventListScreen();
+    return;
+  }
+
+  const players = getEventPlayers();
+  const rule = getMatchRule();
+
+  if (players.length < rule.playerCount) {
+    window.alert(
+      `${rule.playerCount}人以上のプレイヤーを登録してください。`,
+    );
+    return;
+  }
+
+  hideAllScreens();
+  matchCreateScreen.hidden = false;
+
+  matchCreateForm.reset();
+  matchEntryError.textContent = "";
+  matchCreateMessage.textContent = "";
+  matchCreateMessage.className = "form-message";
+  matchPreviewSection.hidden = true;
+
+  matchCreateCaption.textContent =
+    currentEvent.gameType === "sanma"
+      ? "3人の参加者と最終持ち点を入力"
+      : "4人の参加者と最終持ち点を入力";
+
+  matchRuleDescription.textContent =
+    `${rule.playerCount}人のプレイヤーを選び、` +
+    `合計${rule.requiredPointTotal.toLocaleString("ja-JP")}点になるよう入力してください。`;
+
+  requiredPointTotal.textContent =
+    `${rule.requiredPointTotal.toLocaleString("ja-JP")}点`;
+
+  renderMatchEntryRows(players, rule.playerCount);
+  updateMatchPreview();
+}
+
+function renderMatchEntryRows(players, playerCount) {
+  matchEntryList.replaceChildren();
+
+  for (let index = 0; index < playerCount; index += 1) {
+    const row = document.createElement("div");
+    row.className = "match-entry-row";
+
+    const playerOptions = players
+      .map(
+        (player) =>
+          `<option value="${player.playerId}"></option>`,
+      )
+      .join("");
+
+    row.innerHTML = `
+      <span class="match-entry-number">${index + 1}</span>
+      <div class="match-entry-fields">
+        <label>
+          プレイヤー
+          <select class="match-player-select">
+            <option value="">選択してください</option>
+            ${playerOptions}
+          </select>
+        </label>
+        <label>
+          最終持ち点
+          <input
+            class="match-point-input"
+            type="number"
+            inputmode="numeric"
+            step="100"
+            placeholder="例：42000"
+          />
+        </label>
+      </div>
+    `;
+
+    const select = row.querySelector(
+      ".match-player-select",
+    );
+
+    Array.from(select.options).forEach((option) => {
+      if (!option.value) {
+        return;
+      }
+
+      const player = players.find(
+        (item) => item.playerId === option.value,
+      );
+      option.textContent = player ? player.name : "";
+    });
+
+    select.addEventListener("change", updateMatchPreview);
+    row
+      .querySelector(".match-point-input")
+      .addEventListener("input", updateMatchPreview);
+
+    matchEntryList.appendChild(row);
+  }
+}
+
+function readMatchEntries() {
+  return Array.from(
+    matchEntryList.querySelectorAll(".match-entry-row"),
+  ).map((row) => {
+    const playerId = row.querySelector(
+      ".match-player-select",
+    ).value;
+    const pointText = row.querySelector(
+      ".match-point-input",
+    ).value.trim();
+
+    return {
+      playerId,
+      pointText,
+      points: pointText === "" ? null : Number(pointText),
+    };
+  });
+}
+
+function calculateMatchResults(entries) {
+  const players = getEventPlayers();
+  const rule = getMatchRule();
+  const rankPoints =
+    UMA_PRESETS[currentEvent.umaPreset][currentEvent.gameType];
+
+  return entries
+    .map((entry) => {
+      const player = players.find(
+        (item) => item.playerId === entry.playerId,
+      );
+
+      return {
+        playerId: entry.playerId,
+        playerName: player ? player.name : "",
+        points: entry.points,
+      };
+    })
+    .sort((a, b) => b.points - a.points)
+    .map((result, index) => ({
+      ...result,
+      rank: index + 1,
+      rankPoint: rankPoints[index],
+      finalScore:
+        (result.points - rule.returnPoint) / 1000 +
+        rankPoints[index],
+    }));
+}
+
+function validateMatchEntries(entries) {
+  const rule = getMatchRule();
+  const selectedPlayerIds = entries
+    .map((entry) => entry.playerId)
+    .filter(Boolean);
+
+  if (selectedPlayerIds.length !== rule.playerCount) {
+    return "すべてのプレイヤーを選択してください。";
+  }
+
+  if (new Set(selectedPlayerIds).size !== rule.playerCount) {
+    return "同じプレイヤーを重複して選択できません。";
+  }
+
+  if (
+    entries.some(
+      (entry) =>
+        entry.points === null ||
+        !Number.isFinite(entry.points) ||
+        !Number.isInteger(entry.points),
+    )
+  ) {
+    return "すべての最終持ち点を整数で入力してください。";
+  }
+
+  const total = entries.reduce(
+    (sum, entry) => sum + entry.points,
+    0,
+  );
+
+  if (total !== rule.requiredPointTotal) {
+    return (
+      `持ち点の合計を` +
+      `${rule.requiredPointTotal.toLocaleString("ja-JP")}点にしてください。`
+    );
+  }
+
+  if (
+    new Set(entries.map((entry) => entry.points)).size !==
+    rule.playerCount
+  ) {
+    return "同点時の順位処理は未対応です。異なる持ち点を入力してください。";
+  }
+
+  return "";
+}
+
+function updateMatchPreview() {
+  const entries = readMatchEntries();
+  const total = entries.reduce(
+    (sum, entry) =>
+      sum + (Number.isFinite(entry.points) ? entry.points : 0),
+    0,
+  );
+
+  enteredPointTotal.textContent =
+    `${total.toLocaleString("ja-JP")}点`;
+
+  matchEntryError.textContent = "";
+  matchCreateMessage.textContent = "";
+  matchCreateMessage.className = "form-message";
+  matchResultPreview.replaceChildren();
+
+  const errorMessage = validateMatchEntries(entries);
+
+  if (errorMessage) {
+    matchPreviewSection.hidden = true;
+    return;
+  }
+
+  const results = calculateMatchResults(entries);
+  matchPreviewSection.hidden = false;
+
+  results.forEach((result) => {
+    const row = document.createElement("div");
+    row.className = "match-result-row";
+
+    row.innerHTML = `
+      <span class="match-result-rank">${result.rank}位</span>
+      <span class="match-result-player"></span>
+      <span class="match-result-values">
+        <small>${result.points.toLocaleString("ja-JP")}点</small>
+        <strong>${formatSignedScore(result.finalScore)}</strong>
+      </span>
+    `;
+
+    row.querySelector(".match-result-player").textContent =
+      result.playerName;
+
+    matchResultPreview.appendChild(row);
+  });
+}
+
+function updatePlayersFromMatch(results) {
+  const players = getLocalPlayers();
+  const now = new Date().toISOString();
+
+  results.forEach((result) => {
+    const player = players.find(
+      (item) => item.playerId === result.playerId,
+    );
+
+    if (!player) {
+      return;
+    }
+
+    player.matchCount = (player.matchCount || 0) + 1;
+    player.totalScore =
+      Math.round(
+        ((player.totalScore || 0) + result.finalScore) * 10,
+      ) / 10;
+    player.updatedAt = now;
+  });
+
+  saveLocalPlayers(players);
+}
+
+function updateEventMatchCount() {
+  const events = getLocalEvents();
+  const event = events.find(
+    (item) => item.eventId === currentEvent.eventId,
+  );
+
+  if (!event) {
+    return;
+  }
+
+  event.matchCount = (event.matchCount || 0) + 1;
+  event.updatedAt = new Date().toISOString();
+  currentEvent = event;
+
+  localStorage.setItem(
+    LOCAL_EVENTS_STORAGE_KEY,
+    JSON.stringify(events),
+  );
+}
+
+function handleMatchCreateSubmit(event) {
+  event.preventDefault();
+
+  const entries = readMatchEntries();
+  const errorMessage = validateMatchEntries(entries);
+
+  if (errorMessage) {
+    matchEntryError.textContent = errorMessage;
+    matchPreviewSection.hidden = true;
+    return;
+  }
+
+  matchSaveButton.disabled = true;
+  matchSaveButton.textContent = "保存中...";
+
+  try {
+    const results = calculateMatchResults(entries);
+    const matches = getLocalMatches();
+    const now = new Date().toISOString();
+
+    matches.push({
+      matchId: `local-match-${Date.now()}`,
+      eventId: currentEvent.eventId,
+      gameType: currentEvent.gameType,
+      umaPreset: currentEvent.umaPreset,
+      results,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    saveLocalMatches(matches);
+    updatePlayersFromMatch(results);
+    updateEventMatchCount();
+    showEventDetailScreen();
+  } catch (error) {
+    console.error(error);
+
+    matchCreateMessage.textContent =
+      "半荘結果の保存中にエラーが発生しました。";
+    matchCreateMessage.className =
+      "form-message is-error";
+  } finally {
+    matchSaveButton.disabled = false;
+    matchSaveButton.textContent = "半荘結果を保存";
+  }
 }
 
 function showPlayerAddScreen() {
@@ -1245,11 +1739,21 @@ openPlayerAddButton.addEventListener(
   showPlayerAddScreen,
 );
 
-openMatchCreateButton.addEventListener("click", () => {
-  window.alert(
-    "半荘登録画面は次のSTEPで実装します。",
-  );
+openMatchCreateButton.addEventListener(
+  "click",
+  showMatchCreateScreen,
+);
+
+
+
+matchCreateBackButton.addEventListener("click", () => {
+  showEventDetailScreen();
 });
+
+matchCreateForm.addEventListener(
+  "submit",
+  handleMatchCreateSubmit,
+);
 
 playerAddBackButton.addEventListener("click", () => {
   showEventDetailScreen();

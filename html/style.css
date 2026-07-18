@@ -1568,3 +1568,70 @@ select:focus {
     padding-left: 8px;
   }
 }
+
+
+/* STEP7-2：半荘履歴の詳細・編集・削除 */
+.match-history-card {
+  cursor: pointer;
+
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.match-history-card:hover {
+  border-color: #b9d1c1;
+  box-shadow: 0 5px 14px rgba(20, 83, 45, 0.07);
+}
+
+.match-history-card:active {
+  transform: translateY(1px);
+}
+
+.match-history-card:focus-visible {
+  outline: 3px solid rgba(22, 101, 52, 0.18);
+  outline-offset: 2px;
+}
+
+.match-history-open {
+  color: var(--color-primary-dark);
+
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.match-form-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.danger-button {
+  width: 100%;
+  min-height: 50px;
+  padding: 13px 18px;
+
+  color: #b42318;
+  background: #fff7f6;
+  border: 1px solid #f1b9b4;
+  border-radius: var(--radius-medium);
+
+  font-size: 15px;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+
+.danger-button:hover {
+  background: #fff0ee;
+}
+
+.danger-button:focus-visible {
+  outline: 3px solid rgba(180, 35, 24, 0.16);
+  outline-offset: 2px;
+}
+
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

@@ -552,7 +552,7 @@
           </button>
 
           <div class="page-heading">
-            <h1>半荘結果登録</h1>
+            <h1 id="match-form-title">半荘結果登録</h1>
             <p id="match-create-caption">参加者と最終持ち点を入力</p>
           </div>
 
@@ -601,13 +601,24 @@
               aria-live="polite"
             ></p>
 
-            <button
-              id="match-save-button"
-              class="primary-button"
-              type="submit"
-            >
-              半荘結果を保存
-            </button>
+            <div class="match-form-actions">
+              <button
+                id="match-delete-button"
+                class="danger-button"
+                type="button"
+                hidden
+              >
+                この半荘を削除
+              </button>
+
+              <button
+                id="match-save-button"
+                class="primary-button"
+                type="submit"
+              >
+                半荘結果を保存
+              </button>
+            </div>
           </form>
         </div>
       </section>

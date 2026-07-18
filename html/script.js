@@ -176,6 +176,12 @@ const matchCreateMessage = document.getElementById(
 const matchSaveButton = document.getElementById(
   "match-save-button",
 );
+const matchFormTitle = document.getElementById(
+  "match-form-title",
+);
+const matchDeleteButton = document.getElementById(
+  "match-delete-button",
+);
 
 
 
@@ -183,6 +189,7 @@ const matchSaveButton = document.getElementById(
 let currentUser = null;
 let currentEventStatus = "active";
 let currentEvent = null;
+let currentEditingMatch = null;
 
 /**
  * 現在の画面がGAS HTML Service上で動いているかを判定します。
@@ -1004,6 +1011,12 @@ function renderMatchHistory(matches) {
   matches.forEach((match, index) => {
     const card = document.createElement("article");
     card.className = "match-history-card";
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute(
+      "aria-label",
+      `第${matches.length - index}半荘を確認・編集`,
+    );
 
     const playedAt = new Date(match.createdAt);
     const dateText = playedAt.toLocaleString("ja-JP", {
@@ -1016,7 +1029,10 @@ function renderMatchHistory(matches) {
     card.innerHTML = `
       <div class="match-history-header">
         <strong>第${matches.length - index}半荘</strong>
-        <span>${dateText}</span>
+        <span>
+          ${dateText}
+          <span class="match-history-open">確認・編集 ›</span>
+        </span>
       </div>
       <div class="match-history-results"></div>
     `;
@@ -1039,6 +1055,18 @@ function renderMatchHistory(matches) {
         result.playerName;
 
       resultList.appendChild(row);
+    });
+
+    const openMatch = () => {
+      showMatchEditScreen(match);
+    };
+
+    card.addEventListener("click", openMatch);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openMatch();
+      }
     });
 
     matchHistoryList.appendChild(card);
@@ -1067,7 +1095,7 @@ function getEventPlayers() {
   );
 }
 
-function showMatchCreateScreen() {
+function prepareMatchForm({ match = null } = {}) {
   if (!currentEvent) {
     showEventListScreen();
     return;
@@ -1076,12 +1104,14 @@ function showMatchCreateScreen() {
   const players = getEventPlayers();
   const rule = getMatchRule();
 
-  if (players.length < rule.playerCount) {
+  if (!match && players.length < rule.playerCount) {
     window.alert(
       `${rule.playerCount}人以上のプレイヤーを登録してください。`,
     );
     return;
   }
+
+  currentEditingMatch = match;
 
   hideAllScreens();
   matchCreateScreen.hidden = false;
@@ -1091,6 +1121,14 @@ function showMatchCreateScreen() {
   matchCreateMessage.textContent = "";
   matchCreateMessage.className = "form-message";
   matchPreviewSection.hidden = true;
+
+  matchFormTitle.textContent = match
+    ? "半荘結果編集"
+    : "半荘結果登録";
+  matchSaveButton.textContent = match
+    ? "変更を保存"
+    : "半荘結果を保存";
+  matchDeleteButton.hidden = !match;
 
   matchCreateCaption.textContent =
     currentEvent.gameType === "sanma"
@@ -1104,12 +1142,33 @@ function showMatchCreateScreen() {
   requiredPointTotal.textContent =
     `${rule.requiredPointTotal.toLocaleString("ja-JP")}点`;
 
-  renderMatchEntryRows(players, rule.playerCount);
+  renderMatchEntryRows(
+    players,
+    rule.playerCount,
+    match ? match.results : [],
+  );
   updateMatchPreview();
 }
 
-function renderMatchEntryRows(players, playerCount) {
+function showMatchCreateScreen() {
+  currentEditingMatch = null;
+  prepareMatchForm();
+}
+
+function showMatchEditScreen(match) {
+  prepareMatchForm({ match });
+}
+
+function renderMatchEntryRows(
+  players,
+  playerCount,
+  existingResults = [],
+) {
   matchEntryList.replaceChildren();
+
+  const resultsByRank = [...existingResults].sort(
+    (a, b) => Number(a.rank) - Number(b.rank),
+  );
 
   for (let index = 0; index < playerCount; index += 1) {
     const row = document.createElement("div");
@@ -1148,6 +1207,9 @@ function renderMatchEntryRows(players, playerCount) {
     const select = row.querySelector(
       ".match-player-select",
     );
+    const pointInput = row.querySelector(
+      ".match-point-input",
+    );
 
     Array.from(select.options).forEach((option) => {
       if (!option.value) {
@@ -1160,10 +1222,15 @@ function renderMatchEntryRows(players, playerCount) {
       option.textContent = player ? player.name : "";
     });
 
+    const existingResult = resultsByRank[index];
+
+    if (existingResult) {
+      select.value = existingResult.playerId;
+      pointInput.value = String(existingResult.points);
+    }
+
     select.addEventListener("change", updateMatchPreview);
-    row
-      .querySelector(".match-point-input")
-      .addEventListener("input", updateMatchPreview);
+    pointInput.addEventListener("input", updateMatchPreview);
 
     matchEntryList.appendChild(row);
   }
@@ -1318,7 +1385,7 @@ function updatePlayersFromMatch() {
   rebuildPlayerStatsForEvent(currentEvent.eventId);
 }
 
-function updateEventMatchCount() {
+function syncEventMatchCount() {
   const events = getLocalEvents();
   const event = events.find(
     (item) => item.eventId === currentEvent.eventId,
@@ -1328,7 +1395,11 @@ function updateEventMatchCount() {
     return;
   }
 
-  event.matchCount = (event.matchCount || 0) + 1;
+  const matchCount = getLocalMatches().filter(
+    (match) => match.eventId === currentEvent.eventId,
+  ).length;
+
+  event.matchCount = matchCount;
   event.updatedAt = new Date().toISOString();
   currentEvent = event;
 
@@ -1350,7 +1421,10 @@ function handleMatchCreateSubmit(event) {
     return;
   }
 
+  const isEditing = Boolean(currentEditingMatch);
+
   matchSaveButton.disabled = true;
+  matchDeleteButton.disabled = true;
   matchSaveButton.textContent = "保存中...";
 
   try {
@@ -1358,30 +1432,97 @@ function handleMatchCreateSubmit(event) {
     const matches = getLocalMatches();
     const now = new Date().toISOString();
 
-    matches.push({
-      matchId: `local-match-${Date.now()}`,
-      eventId: currentEvent.eventId,
-      gameType: currentEvent.gameType,
-      umaPreset: currentEvent.umaPreset,
-      results,
-      createdAt: now,
-      updatedAt: now,
-    });
+    if (currentEditingMatch) {
+      const targetIndex = matches.findIndex(
+        (match) =>
+          match.matchId === currentEditingMatch.matchId,
+      );
+
+      if (targetIndex < 0) {
+        throw new Error("編集対象の半荘が見つかりません。");
+      }
+
+      matches[targetIndex] = {
+        ...matches[targetIndex],
+        gameType: currentEvent.gameType,
+        umaPreset: currentEvent.umaPreset,
+        results,
+        updatedAt: now,
+      };
+    } else {
+      matches.push({
+        matchId: `local-match-${Date.now()}`,
+        eventId: currentEvent.eventId,
+        gameType: currentEvent.gameType,
+        umaPreset: currentEvent.umaPreset,
+        results,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
 
     saveLocalMatches(matches);
     updatePlayersFromMatch();
-    updateEventMatchCount();
+    syncEventMatchCount();
+    currentEditingMatch = null;
     showEventDetailScreen();
   } catch (error) {
     console.error(error);
 
     matchCreateMessage.textContent =
-      "半荘結果の保存中にエラーが発生しました。";
+      error instanceof Error
+        ? error.message
+        : "半荘結果の保存中にエラーが発生しました。";
     matchCreateMessage.className =
       "form-message is-error";
   } finally {
     matchSaveButton.disabled = false;
-    matchSaveButton.textContent = "半荘結果を保存";
+    matchDeleteButton.disabled = false;
+    matchSaveButton.textContent = isEditing
+      ? "変更を保存"
+      : "半荘結果を保存";
+  }
+}
+
+function handleMatchDelete() {
+  if (!currentEditingMatch) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "この半荘結果を削除しますか？\n削除すると、参加プレイヤーの成績も再集計されます。",
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  matchSaveButton.disabled = true;
+  matchDeleteButton.disabled = true;
+  matchDeleteButton.textContent = "削除中...";
+
+  try {
+    const matches = getLocalMatches().filter(
+      (match) =>
+        match.matchId !== currentEditingMatch.matchId,
+    );
+
+    saveLocalMatches(matches);
+    updatePlayersFromMatch();
+    syncEventMatchCount();
+    currentEditingMatch = null;
+    showEventDetailScreen();
+  } catch (error) {
+    console.error(error);
+
+    matchCreateMessage.textContent =
+      "半荘結果の削除中にエラーが発生しました。";
+    matchCreateMessage.className =
+      "form-message is-error";
+  } finally {
+    matchSaveButton.disabled = false;
+    matchDeleteButton.disabled = false;
+    matchDeleteButton.textContent = "この半荘を削除";
   }
 }
 
@@ -1851,12 +1992,18 @@ openMatchCreateButton.addEventListener(
 
 
 matchCreateBackButton.addEventListener("click", () => {
+  currentEditingMatch = null;
   showEventDetailScreen();
 });
 
 matchCreateForm.addEventListener(
   "submit",
   handleMatchCreateSubmit,
+);
+
+matchDeleteButton.addEventListener(
+  "click",
+  handleMatchDelete,
 );
 
 playerAddBackButton.addEventListener("click", () => {

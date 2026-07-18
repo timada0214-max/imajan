@@ -5,6 +5,7 @@ const LOCAL_USERS_STORAGE_KEY = "imajan.localUsers";
 const LOCAL_EVENTS_STORAGE_KEY = "imajan.localEvents";
 const LOCAL_PLAYERS_STORAGE_KEY = "imajan.localPlayers";
 const LOCAL_MATCHES_STORAGE_KEY = "imajan.localMatches";
+const LOCAL_ADJUSTMENTS_STORAGE_KEY = "imajan.localAdjustments";
 
 const loginScreen = document.getElementById("login-screen");
 const homeScreen = document.getElementById("home-screen");
@@ -13,6 +14,9 @@ const eventCreateScreen = document.getElementById("event-create-screen");
 const eventDetailScreen = document.getElementById("event-detail-screen");
 const playerAddScreen = document.getElementById("player-add-screen");
 const matchCreateScreen = document.getElementById("match-create-screen");
+const adjustmentCreateScreen = document.getElementById(
+  "adjustment-create-screen",
+);
 
 const loginForm = document.getElementById("login-form");
 const nicknameInput = document.getElementById("nickname");
@@ -118,6 +122,18 @@ const openPlayerAddButton = document.getElementById(
 const openMatchCreateButton = document.getElementById(
   "open-match-create-button",
 );
+const adjustmentCountText = document.getElementById(
+  "adjustment-count-text",
+);
+const openAdjustmentCreateButton = document.getElementById(
+  "open-adjustment-create-button",
+);
+const adjustmentHistoryList = document.getElementById(
+  "adjustment-history-list",
+);
+const adjustmentEmptyState = document.getElementById(
+  "adjustment-empty-state",
+);
 
 const playerAddBackButton = document.getElementById(
   "player-add-back-button",
@@ -189,6 +205,40 @@ const matchDeleteButton = document.getElementById(
   "match-delete-button",
 );
 
+const adjustmentCreateBackButton = document.getElementById(
+  "adjustment-create-back-button",
+);
+const adjustmentCreateForm = document.getElementById(
+  "adjustment-create-form",
+);
+const adjustmentFormTitle = document.getElementById(
+  "adjustment-form-title",
+);
+const adjustmentTitleInput = document.getElementById(
+  "adjustment-title",
+);
+const adjustmentEntryList = document.getElementById(
+  "adjustment-entry-list",
+);
+const adjustmentTotal = document.getElementById(
+  "adjustment-total",
+);
+const adjustmentTotalMessage = document.getElementById(
+  "adjustment-total-message",
+);
+const adjustmentEntryError = document.getElementById(
+  "adjustment-entry-error",
+);
+const adjustmentCreateMessage = document.getElementById(
+  "adjustment-create-message",
+);
+const adjustmentSaveButton = document.getElementById(
+  "adjustment-save-button",
+);
+const adjustmentDeleteButton = document.getElementById(
+  "adjustment-delete-button",
+);
+
 
 
 
@@ -196,6 +246,7 @@ let currentUser = null;
 let currentEventStatus = "active";
 let currentEvent = null;
 let currentEditingMatch = null;
+let currentEditingAdjustment = null;
 
 /**
  * 現在の画面がGAS HTML Service上で動いているかを判定します。
@@ -351,6 +402,7 @@ function hideAllScreens() {
   eventDetailScreen.hidden = true;
   playerAddScreen.hidden = true;
   matchCreateScreen.hidden = true;
+  adjustmentCreateScreen.hidden = true;
 }
 
 /**
@@ -543,6 +595,33 @@ function saveLocalMatches(matches) {
   localStorage.setItem(
     LOCAL_MATCHES_STORAGE_KEY,
     JSON.stringify(matches),
+  );
+}
+
+function getLocalAdjustments() {
+  const savedAdjustments = localStorage.getItem(
+    LOCAL_ADJUSTMENTS_STORAGE_KEY,
+  );
+
+  if (!savedAdjustments) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(savedAdjustments);
+  } catch (error) {
+    console.warn(
+      "ローカルポイント増減の読み込みに失敗しました。",
+      error,
+    );
+    return [];
+  }
+}
+
+function saveLocalAdjustments(adjustments) {
+  localStorage.setItem(
+    LOCAL_ADJUSTMENTS_STORAGE_KEY,
+    JSON.stringify(adjustments),
   );
 }
 
@@ -850,7 +929,21 @@ function renderEventDetail() {
 
   matchCountText.textContent = `${matches.length}半荘`;
 
+  const adjustments = getLocalAdjustments()
+    .filter(
+      (adjustment) =>
+        adjustment.eventId === currentEvent.eventId,
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() -
+        new Date(a.createdAt).getTime(),
+    );
+
+  adjustmentCountText.textContent = `${adjustments.length}件`;
+
   renderMatchHistory(matches);
+  renderAdjustmentHistory(adjustments);
   renderPlayerStandings(players);
 }
 
@@ -896,6 +989,9 @@ function rebuildPlayerStatsForEvent(eventId) {
   const matches = getLocalMatches().filter(
     (match) => match.eventId === eventId,
   );
+  const adjustments = getLocalAdjustments().filter(
+    (adjustment) => adjustment.eventId === eventId,
+  );
 
   eventPlayers.forEach((player) => {
     const playerResults = matches.flatMap((match) =>
@@ -918,10 +1014,21 @@ function rebuildPlayerStatsForEvent(eventId) {
       (sum, result) => sum + Number(result.rank || 0),
       0,
     );
-    const totalScore = playerResults.reduce(
+    const matchScore = playerResults.reduce(
       (sum, result) => sum + Number(result.finalScore || 0),
       0,
     );
+    const adjustmentScore = adjustments.reduce(
+      (sum, adjustment) => {
+        const entry = adjustment.entries.find(
+          (item) => item.playerId === player.playerId,
+        );
+
+        return sum + Number(entry?.points || 0);
+      },
+      0,
+    );
+    const totalScore = matchScore + adjustmentScore;
 
     player.matchCount = playerResults.length;
     player.rankCounts = rankCounts;
@@ -1077,6 +1184,399 @@ function renderMatchHistory(matches) {
 
     matchHistoryList.appendChild(card);
   });
+}
+
+
+function renderAdjustmentHistory(adjustments) {
+  adjustmentHistoryList.replaceChildren();
+
+  if (adjustments.length === 0) {
+    adjustmentEmptyState.hidden = false;
+    return;
+  }
+
+  adjustmentEmptyState.hidden = true;
+
+  adjustments.forEach((adjustment) => {
+    const card = document.createElement("article");
+    card.className = "adjustment-history-card";
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute(
+      "aria-label",
+      `${adjustment.title || "ポイント増減"}を確認・編集`,
+    );
+
+    const createdAt = new Date(adjustment.createdAt);
+    const dateText = createdAt.toLocaleString("ja-JP", {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    card.innerHTML = `
+      <div class="adjustment-history-header">
+        <strong class="adjustment-history-title"></strong>
+        <span>
+          ${dateText}
+          <span class="adjustment-history-open">確認・編集 ›</span>
+        </span>
+      </div>
+      <div class="adjustment-history-results"></div>
+    `;
+
+    card.querySelector(".adjustment-history-title").textContent =
+      adjustment.title || "ポイント増減";
+
+    const resultList = card.querySelector(
+      ".adjustment-history-results",
+    );
+
+    adjustment.entries
+      .filter((entry) => Number(entry.points) !== 0)
+      .forEach((entry) => {
+        const row = document.createElement("div");
+        row.className = "adjustment-history-result";
+
+        row.innerHTML = `
+          <span class="adjustment-history-player"></span>
+          <strong>${formatSignedScore(Number(entry.points))}</strong>
+        `;
+
+        row.querySelector(
+          ".adjustment-history-player",
+        ).textContent = entry.playerName;
+
+        resultList.appendChild(row);
+      });
+
+    const openAdjustment = () => {
+      showAdjustmentEditScreen(adjustment);
+    };
+
+    card.addEventListener("click", openAdjustment);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openAdjustment();
+      }
+    });
+
+    adjustmentHistoryList.appendChild(card);
+  });
+}
+
+function renderAdjustmentEntryRows(existingEntries = []) {
+  adjustmentEntryList.replaceChildren();
+
+  const existingMap = new Map(
+    existingEntries.map((entry) => [
+      entry.playerId,
+      Number(entry.points || 0),
+    ]),
+  );
+
+  getEventPlayers().forEach((player) => {
+    const row = document.createElement("div");
+    row.className = "adjustment-entry-row";
+    row.dataset.playerId = player.playerId;
+
+    row.innerHTML = `
+      <span class="adjustment-entry-player"></span>
+      <input
+        class="adjustment-point-input"
+        type="number"
+        inputmode="decimal"
+        step="0.1"
+        value="0"
+        aria-label="${player.name}のポイント増減"
+      />
+    `;
+
+    row.querySelector(".adjustment-entry-player").textContent =
+      player.name;
+
+    const input = row.querySelector(
+      ".adjustment-point-input",
+    );
+    input.value = String(existingMap.get(player.playerId) || 0);
+    input.addEventListener("input", updateAdjustmentTotal);
+
+    adjustmentEntryList.appendChild(row);
+  });
+}
+
+function readAdjustmentEntries() {
+  const players = getEventPlayers();
+
+  return Array.from(
+    adjustmentEntryList.querySelectorAll(
+      ".adjustment-entry-row",
+    ),
+  ).map((row) => {
+    const playerId = row.dataset.playerId;
+    const player = players.find(
+      (item) => item.playerId === playerId,
+    );
+    const input = row.querySelector(
+      ".adjustment-point-input",
+    );
+    const valueText = input.value.trim();
+
+    return {
+      playerId,
+      playerName: player ? player.name : "",
+      valueText,
+      points: valueText === "" ? null : Number(valueText),
+    };
+  });
+}
+
+function roundScore(value) {
+  return Math.round((value + Number.EPSILON) * 10) / 10;
+}
+
+function updateAdjustmentTotal() {
+  const entries = readAdjustmentEntries();
+  const total = roundScore(
+    entries.reduce(
+      (sum, entry) =>
+        sum + (Number.isFinite(entry.points) ? entry.points : 0),
+      0,
+    ),
+  );
+
+  adjustmentTotal.textContent = formatSignedScore(total);
+  adjustmentTotalMessage.className =
+    "adjustment-total-message";
+
+  if (Math.abs(total) < 0.0001) {
+    adjustmentTotalMessage.textContent =
+      "合計が一致しています";
+    adjustmentTotalMessage.classList.add("is-matched");
+  } else {
+    adjustmentTotalMessage.textContent =
+      `合計を0にしてください（現在${formatSignedScore(total)}）`;
+    adjustmentTotalMessage.classList.add("is-unmatched");
+  }
+
+  adjustmentEntryError.textContent = "";
+  adjustmentCreateMessage.textContent = "";
+  adjustmentCreateMessage.className = "form-message";
+}
+
+function validateAdjustmentEntries(entries) {
+  if (entries.length === 0) {
+    return "先にプレイヤーを登録してください。";
+  }
+
+  if (
+    entries.some(
+      (entry) =>
+        entry.points === null ||
+        !Number.isFinite(entry.points),
+    )
+  ) {
+    return "すべてのポイントを数字で入力してください。";
+  }
+
+  if (entries.every((entry) => entry.points === 0)) {
+    return "1人以上のポイントを増減してください。";
+  }
+
+  const total = roundScore(
+    entries.reduce(
+      (sum, entry) => sum + entry.points,
+      0,
+    ),
+  );
+
+  if (Math.abs(total) >= 0.0001) {
+    return "ポイント増減の合計を0にしてください。";
+  }
+
+  return "";
+}
+
+function prepareAdjustmentForm({ adjustment = null } = {}) {
+  const players = getEventPlayers();
+
+  adjustmentCreateForm.reset();
+  adjustmentEntryError.textContent = "";
+  adjustmentCreateMessage.textContent = "";
+  adjustmentCreateMessage.className = "form-message";
+
+  adjustmentFormTitle.textContent = adjustment
+    ? "ポイント増減編集"
+    : "ポイント増減登録";
+  adjustmentSaveButton.textContent = adjustment
+    ? "変更を保存"
+    : "ポイント増減を保存";
+  adjustmentDeleteButton.hidden = !adjustment;
+  adjustmentDeleteButton.textContent =
+    "このポイント増減を削除";
+
+  adjustmentTitleInput.value = adjustment?.title || "";
+  renderAdjustmentEntryRows(adjustment?.entries || []);
+  updateAdjustmentTotal();
+
+  adjustmentSaveButton.disabled = players.length === 0;
+
+  window.setTimeout(() => {
+    if (players.length > 0) {
+      const firstInput = adjustmentEntryList.querySelector(
+        ".adjustment-point-input",
+      );
+      firstInput?.focus();
+      firstInput?.select();
+    }
+  }, 0);
+}
+
+function showAdjustmentCreateScreen() {
+  if (!currentEvent) {
+    showEventListScreen();
+    return;
+  }
+
+  currentEditingAdjustment = null;
+  hideAllScreens();
+  adjustmentCreateScreen.hidden = false;
+  prepareAdjustmentForm();
+}
+
+function showAdjustmentEditScreen(adjustment) {
+  if (!currentEvent) {
+    showEventListScreen();
+    return;
+  }
+
+  currentEditingAdjustment = adjustment;
+  hideAllScreens();
+  adjustmentCreateScreen.hidden = false;
+  prepareAdjustmentForm({ adjustment });
+}
+
+function handleAdjustmentSubmit(event) {
+  event.preventDefault();
+
+  const entries = readAdjustmentEntries();
+  const errorMessage = validateAdjustmentEntries(entries);
+
+  if (errorMessage) {
+    adjustmentEntryError.textContent = errorMessage;
+    return;
+  }
+
+  const isEditing = Boolean(currentEditingAdjustment);
+
+  adjustmentSaveButton.disabled = true;
+  adjustmentDeleteButton.disabled = true;
+  adjustmentSaveButton.textContent = "保存中...";
+
+  try {
+    const adjustments = getLocalAdjustments();
+    const now = new Date().toISOString();
+    const normalizedEntries = entries.map((entry) => ({
+      playerId: entry.playerId,
+      playerName: entry.playerName,
+      points: roundScore(entry.points),
+    }));
+
+    if (currentEditingAdjustment) {
+      const targetIndex = adjustments.findIndex(
+        (adjustment) =>
+          adjustment.adjustmentId ===
+          currentEditingAdjustment.adjustmentId,
+      );
+
+      if (targetIndex < 0) {
+        throw new Error(
+          "編集対象のポイント増減が見つかりません。",
+        );
+      }
+
+      adjustments[targetIndex] = {
+        ...adjustments[targetIndex],
+        title: adjustmentTitleInput.value.trim(),
+        entries: normalizedEntries,
+        updatedAt: now,
+      };
+    } else {
+      adjustments.push({
+        adjustmentId: `local-adjustment-${Date.now()}`,
+        eventId: currentEvent.eventId,
+        title: adjustmentTitleInput.value.trim(),
+        entries: normalizedEntries,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    saveLocalAdjustments(adjustments);
+    rebuildPlayerStatsForEvent(currentEvent.eventId);
+    currentEditingAdjustment = null;
+    showEventDetailScreen();
+  } catch (error) {
+    console.error(error);
+
+    adjustmentCreateMessage.textContent =
+      error instanceof Error
+        ? error.message
+        : "ポイント増減の保存中にエラーが発生しました。";
+    adjustmentCreateMessage.className =
+      "form-message is-error";
+  } finally {
+    adjustmentSaveButton.disabled = false;
+    adjustmentDeleteButton.disabled = false;
+    adjustmentSaveButton.textContent = isEditing
+      ? "変更を保存"
+      : "ポイント増減を保存";
+  }
+}
+
+function handleAdjustmentDelete() {
+  if (!currentEditingAdjustment) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "このポイント増減を削除しますか？\n削除すると、総合ポイントも再集計されます。",
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  adjustmentSaveButton.disabled = true;
+  adjustmentDeleteButton.disabled = true;
+  adjustmentDeleteButton.textContent = "削除中...";
+
+  try {
+    const adjustments = getLocalAdjustments().filter(
+      (adjustment) =>
+        adjustment.adjustmentId !==
+        currentEditingAdjustment.adjustmentId,
+    );
+
+    saveLocalAdjustments(adjustments);
+    rebuildPlayerStatsForEvent(currentEvent.eventId);
+    currentEditingAdjustment = null;
+    showEventDetailScreen();
+  } catch (error) {
+    console.error(error);
+
+    adjustmentCreateMessage.textContent =
+      "ポイント増減の削除中にエラーが発生しました。";
+    adjustmentCreateMessage.className =
+      "form-message is-error";
+  } finally {
+    adjustmentSaveButton.disabled = false;
+    adjustmentDeleteButton.disabled = false;
+    adjustmentDeleteButton.textContent =
+      "このポイント増減を削除";
+  }
 }
 
 function getMatchRule() {
@@ -2332,6 +2832,11 @@ openMatchCreateButton.addEventListener(
   showMatchCreateScreen,
 );
 
+openAdjustmentCreateButton.addEventListener(
+  "click",
+  showAdjustmentCreateScreen,
+);
+
 
 
 matchCreateBackButton.addEventListener("click", () => {
@@ -2347,6 +2852,21 @@ matchCreateForm.addEventListener(
 matchDeleteButton.addEventListener(
   "click",
   handleMatchDelete,
+);
+
+adjustmentCreateBackButton.addEventListener("click", () => {
+  currentEditingAdjustment = null;
+  showEventDetailScreen();
+});
+
+adjustmentCreateForm.addEventListener(
+  "submit",
+  handleAdjustmentSubmit,
+);
+
+adjustmentDeleteButton.addEventListener(
+  "click",
+  handleAdjustmentDelete,
 );
 
 playerAddBackButton.addEventListener("click", () => {

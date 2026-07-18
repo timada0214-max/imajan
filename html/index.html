@@ -478,6 +478,36 @@
               <p>まだ半荘結果はありません。</p>
             </section>
           </section>
+
+          <section class="detail-section">
+            <div class="detail-section-header">
+              <div>
+                <h2>ポイント増減</h2>
+                <p id="adjustment-count-text">0件</p>
+              </div>
+
+              <button
+                id="open-adjustment-create-button"
+                class="header-action-button"
+                type="button"
+              >
+                増減を登録
+              </button>
+            </div>
+
+            <p class="detail-section-description">
+              チップ・チョンボなど、半荘数や順位に含めないポイントを登録します。
+            </p>
+
+            <div
+              id="adjustment-history-list"
+              class="adjustment-history-list"
+            ></div>
+
+            <section id="adjustment-empty-state" class="mini-empty-state">
+              <p>まだポイント増減はありません。</p>
+            </section>
+          </section>
         </div>
       </section>
 
@@ -630,6 +660,101 @@
                 type="submit"
               >
                 半荘結果を保存
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+
+      <section id="adjustment-create-screen" class="page-screen" hidden>
+        <header class="page-header">
+          <button
+            id="adjustment-create-back-button"
+            class="icon-button"
+            type="button"
+            aria-label="イベント詳細へ戻る"
+          >
+            ‹
+          </button>
+
+          <div class="page-heading">
+            <h1 id="adjustment-form-title">ポイント増減登録</h1>
+            <p>半荘数・順位には含まれません</p>
+          </div>
+
+          <span class="header-spacer" aria-hidden="true"></span>
+        </header>
+
+        <div class="page-content">
+          <form id="adjustment-create-form" class="event-form" novalidate>
+            <section class="form-section">
+              <div class="section-heading">
+                <h2>内容</h2>
+                <p>チップ精算、チョンボなどを入力できます。</p>
+              </div>
+
+              <div class="form-group">
+                <label for="adjustment-title">内容・メモ（任意）</label>
+                <input
+                  id="adjustment-title"
+                  name="adjustmentTitle"
+                  type="text"
+                  maxlength="40"
+                  placeholder="例：チップ精算"
+                />
+              </div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-heading">
+                <h2>プレイヤー別ポイント</h2>
+                <p>プラスとマイナスの合計が0になるように入力してください。</p>
+              </div>
+
+              <div
+                id="adjustment-entry-list"
+                class="adjustment-entry-list"
+              ></div>
+
+              <div class="adjustment-total-panel">
+                <span>増減合計</span>
+                <strong id="adjustment-total">0</strong>
+                <p
+                  id="adjustment-total-message"
+                  class="adjustment-total-message is-matched"
+                  aria-live="polite"
+                >
+                  合計が一致しています
+                </p>
+              </div>
+
+              <p id="adjustment-entry-error" class="field-error"></p>
+            </section>
+
+            <p
+              id="adjustment-create-message"
+              class="form-message"
+              role="status"
+              aria-live="polite"
+            ></p>
+
+            <div class="match-form-actions">
+              <button
+                id="adjustment-delete-button"
+                class="danger-button"
+                type="button"
+                hidden
+              >
+                このポイント増減を削除
+              </button>
+
+              <button
+                id="adjustment-save-button"
+                class="primary-button"
+                type="submit"
+              >
+                ポイント増減を保存
               </button>
             </div>
           </form>

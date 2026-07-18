@@ -1709,3 +1709,177 @@ select:focus {
   font-size: 10px;
   font-weight: 700;
 }
+
+
+/* STEP7-5：半荘に含めないポイント増減 */
+.detail-section-description {
+  margin: -6px 0 14px;
+
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.adjustment-history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.adjustment-history-card {
+  padding: 14px;
+
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-medium);
+  box-shadow: var(--shadow-card);
+
+  cursor: pointer;
+}
+
+.adjustment-history-card:hover {
+  border-color: #a9c9b1;
+}
+
+.adjustment-history-card:active {
+  transform: translateY(1px);
+}
+
+.adjustment-history-card:focus-visible {
+  outline: 3px solid rgba(20, 83, 45, 0.18);
+  outline-offset: 2px;
+}
+
+.adjustment-history-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+
+  margin-bottom: 10px;
+}
+
+.adjustment-history-header strong {
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.adjustment-history-header > span {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  text-align: right;
+}
+
+.adjustment-history-open {
+  display: block;
+  margin-top: 3px;
+
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.adjustment-history-results {
+  display: grid;
+  gap: 6px;
+}
+
+.adjustment-history-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+
+  font-size: 13px;
+}
+
+.adjustment-history-result strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.adjustment-entry-list {
+  display: grid;
+  gap: 10px;
+}
+
+.adjustment-entry-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 140px);
+  gap: 12px;
+  align-items: center;
+
+  padding: 12px;
+
+  background: #f8faf8;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+}
+
+.adjustment-entry-player {
+  overflow: hidden;
+
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adjustment-point-input {
+  width: 100%;
+  min-width: 0;
+
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.adjustment-total-panel {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  align-items: center;
+
+  margin-top: 14px;
+  padding: 12px;
+
+  background: #f5f7f5;
+  border-radius: var(--radius-small);
+}
+
+.adjustment-total-panel > span {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.adjustment-total-panel > strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.adjustment-total-message {
+  grid-column: 1 / -1;
+
+  margin: 4px 0 0;
+  padding: 8px 10px;
+
+  border-radius: 8px;
+
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.adjustment-total-message.is-matched {
+  color: var(--color-primary-dark);
+  background: #edf8f0;
+}
+
+.adjustment-total-message.is-unmatched {
+  color: #b42318;
+  background: #fff1f0;
+}
+
+@media (max-width: 420px) {
+  .adjustment-entry-row {
+    grid-template-columns: minmax(0, 1fr) 112px;
+    gap: 8px;
+  }
+}

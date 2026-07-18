@@ -323,6 +323,9 @@ let loadedEventOwnerUserId = null;
 let cloudPlayers = [];
 let playerLoadPromise = null;
 let loadedPlayerOwnerUserId = null;
+let cloudMatches = [];
+let matchLoadPromise = null;
+let loadedMatchOwnerUserId = null;
 let currentEditingMatch = null;
 let tieBreakOrderByPoints = new Map();
 let standingsMode = "all";
@@ -543,6 +546,9 @@ function showLoginScreen() {
   cloudPlayers = [];
   loadedPlayerOwnerUserId = null;
   playerLoadPromise = null;
+  cloudMatches = [];
+  loadedMatchOwnerUserId = null;
+  matchLoadPromise = null;
 
   hideAllScreens();
   loginScreen.hidden = false;
@@ -914,30 +920,21 @@ function getLegacyLocalPlayers() {
 
 
 function getLocalMatches() {
-  const savedMatches = localStorage.getItem(
-    LOCAL_MATCHES_STORAGE_KEY,
-  );
-
-  if (!savedMatches) {
-    return [];
-  }
-
-  try {
-    return JSON.parse(savedMatches);
-  } catch (error) {
-    console.warn(
-      "ローカル半荘結果の読み込みに失敗しました。",
-      error,
-    );
-    return [];
-  }
+  return cloudMatches;
 }
 
 function saveLocalMatches(matches) {
-  localStorage.setItem(
-    LOCAL_MATCHES_STORAGE_KEY,
-    JSON.stringify(matches),
-  );
+  cloudMatches = Array.isArray(matches) ? matches : [];
+}
+
+function getLegacyLocalMatches() {
+  const savedMatches = localStorage.getItem(LOCAL_MATCHES_STORAGE_KEY);
+  if (!savedMatches) return [];
+  try { return JSON.parse(savedMatches); }
+  catch (error) {
+    console.warn("旧ローカル半荘結果の読み込みに失敗しました。", error);
+    return [];
+  }
 }
 
 function getLocalAdjustments() {
@@ -1141,6 +1138,11 @@ function getLocalMatchCount(eventId) {
 function normalizeCloudEvent(event) {
   return {
     ...event,
+    umaPreset: String(event.umaPreset || ""),
+    rankScore1: Number(event.rankScore1 || 0),
+    rankScore2: Number(event.rankScore2 || 0),
+    rankScore3: Number(event.rankScore3 || 0),
+    rankScore4: Number(event.rankScore4 || 0),
     matchCount: Math.max(
       Number(event.matchCount || 0),
       getLocalMatchCount(event.eventId),
@@ -1478,6 +1480,63 @@ function switchEventStatus(status) {
 
 
 
+function getMatchMigrationKey(ownerUserId) {
+  return `imajan.matchMigration.v1.${ownerUserId}`;
+}
+
+function normalizeCloudMatch(match) {
+  return {
+    matchId: String(match.matchId), eventId: String(match.eventId),
+    gameType: String(match.gameType || "yonma"), umaPreset: String(match.umaPreset || ""),
+    entryOrderPlayerIds: Array.isArray(match.entryOrderPlayerIds) ? match.entryOrderPlayerIds.map(String) : [],
+    tieBreakOrderPlayerIds: Array.isArray(match.tieBreakOrderPlayerIds) ? match.tieBreakOrderPlayerIds.map(String) : [],
+    results: Array.isArray(match.results) ? match.results.map((result) => ({
+      playerId: String(result.playerId), playerName: String(result.playerName || ""),
+      points: Number(result.points), rank: Number(result.rank), rankPoint: Number(result.rankPoint), finalScore: Number(result.finalScore),
+    })) : [],
+    playedAt: String(match.playedAt || match.createdAt || ""),
+    createdAt: String(match.createdAt || ""), updatedAt: String(match.updatedAt || ""),
+  };
+}
+
+async function saveMatchOnSheet(match) {
+  const saved = await callGasApi("saveMatch", { ownerUserId: currentUser.userId, ...match, preferredMatchId: match.matchId });
+  const normalized = normalizeCloudMatch(saved);
+  const index = cloudMatches.findIndex((item) => item.matchId === normalized.matchId);
+  if (index >= 0) cloudMatches[index] = normalized; else cloudMatches.push(normalized);
+  return normalized;
+}
+
+async function deleteMatchOnSheet(matchId) {
+  await callGasApi("deleteMatch", { ownerUserId: currentUser.userId, matchId });
+  cloudMatches = cloudMatches.filter((match) => match.matchId !== matchId);
+}
+
+async function migrateLegacyMatchesToSheet() {
+  const key = getMatchMigrationKey(currentUser.userId);
+  if (localStorage.getItem(key) === "done") return;
+  const ownedEventIds = new Set(cloudEvents.filter((event) => event.ownerUserId === currentUser.userId).map((event) => event.eventId));
+  const legacyMatches = getLegacyLocalMatches().filter((match) => ownedEventIds.has(String(match.eventId)));
+  for (const match of legacyMatches) await saveMatchOnSheet(match);
+  localStorage.setItem(key, "done");
+}
+
+async function loadMatchesFromSheet({ force = false } = {}) {
+  if (!currentUser) return [];
+  if (!force && loadedMatchOwnerUserId === currentUser.userId) return cloudMatches;
+  if (matchLoadPromise) return matchLoadPromise;
+  matchLoadPromise = (async () => {
+    await loadEventsFromSheet();
+    await migrateLegacyMatchesToSheet();
+    const matches = await callGasApi("listMatches", { ownerUserId: currentUser.userId });
+    cloudMatches = Array.isArray(matches) ? matches.map(normalizeCloudMatch) : [];
+    loadedMatchOwnerUserId = currentUser.userId;
+    return cloudMatches;
+  })();
+  try { return await matchLoadPromise; } finally { matchLoadPromise = null; }
+}
+
+
 async function showEventDetailScreen(event = currentEvent) {
   if (!event) {
     showEventListScreen();
@@ -1496,10 +1555,10 @@ async function showEventDetailScreen(event = currentEvent) {
 
   hideAllScreens();
   eventDetailScreen.hidden = false;
-  showLoading("プレイヤーを読み込んでいます…");
+  showLoading("大会データを読み込んでいます…");
 
   try {
-    await loadPlayersFromSheet();
+    await Promise.all([loadPlayersFromSheet(), loadMatchesFromSheet()]);
     renderEventDetail();
   } catch (error) {
     console.error(error);
@@ -3277,11 +3336,38 @@ function renderTieBreakControls(entries) {
   });
 }
 
+function getCurrentEventRankPoints() {
+  const gameType = currentEvent?.gameType === "sanma" ? "sanma" : "yonma";
+  const preset = String(currentEvent?.umaPreset || "");
+  const presetScores = UMA_PRESETS[preset];
+
+  if (presetScores && Array.isArray(presetScores[gameType])) {
+    return presetScores[gameType];
+  }
+
+  const sheetScores = [
+    Number(currentEvent?.rankScore1),
+    Number(currentEvent?.rankScore2),
+    Number(currentEvent?.rankScore3),
+    Number(currentEvent?.rankScore4),
+  ];
+  const requiredCount = gameType === "sanma" ? 3 : 4;
+
+  if (
+    sheetScores.slice(0, requiredCount).every(Number.isFinite)
+  ) {
+    return sheetScores.slice(0, requiredCount);
+  }
+
+  throw new Error(
+    "イベントのウマ・オカ設定を読み込めませんでした。ページを再読み込みして、もう一度お試しください。",
+  );
+}
+
 function calculateMatchResults(entries) {
   const players = getEventPlayers();
   const rule = getMatchRule();
-  const rankPoints =
-    UMA_PRESETS[currentEvent.umaPreset][currentEvent.gameType];
+  const rankPoints = getCurrentEventRankPoints();
 
   return entries
     .map((entry) => {
@@ -3444,7 +3530,7 @@ function syncEventMatchCount() {
   currentEvent = event;
 }
 
-function handleMatchCreateSubmit(event) {
+async function handleMatchCreateSubmit(event) {
   event.preventDefault();
 
   const entries = readMatchEntries();
@@ -3524,7 +3610,10 @@ function handleMatchCreateSubmit(event) {
       });
     }
 
-    saveLocalMatches(matches);
+    const targetMatch = currentEditingMatch
+      ? matches.find((match) => match.matchId === currentEditingMatch.matchId)
+      : matches[matches.length - 1];
+    await saveMatchOnSheet(targetMatch);
     updatePlayersFromMatch();
     syncEventMatchCount();
     currentEditingMatch = null;
@@ -3550,7 +3639,7 @@ function handleMatchCreateSubmit(event) {
   }
 }
 
-function handleMatchDelete() {
+async function handleMatchDelete() {
   if (!currentEditingMatch) {
     return;
   }
@@ -3567,12 +3656,7 @@ function handleMatchDelete() {
   matchDeleteButton.textContent = "削除中...";
 
   try {
-    const matches = getLocalMatches().filter(
-      (match) =>
-        match.matchId !== currentEditingMatch.matchId,
-    );
-
-    saveLocalMatches(matches);
+    await deleteMatchOnSheet(currentEditingMatch.matchId);
     updatePlayersFromMatch();
     syncEventMatchCount();
     currentEditingMatch = null;

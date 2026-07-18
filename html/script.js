@@ -326,6 +326,9 @@ let loadedPlayerOwnerUserId = null;
 let cloudMatches = [];
 let matchLoadPromise = null;
 let loadedMatchOwnerUserId = null;
+let cloudAdjustments = [];
+let adjustmentLoadPromise = null;
+let loadedAdjustmentOwnerUserId = null;
 let currentEditingMatch = null;
 let tieBreakOrderByPoints = new Map();
 let standingsMode = "all";
@@ -549,6 +552,9 @@ function showLoginScreen() {
   cloudMatches = [];
   loadedMatchOwnerUserId = null;
   matchLoadPromise = null;
+  cloudAdjustments = [];
+  loadedAdjustmentOwnerUserId = null;
+  adjustmentLoadPromise = null;
 
   hideAllScreens();
   loginScreen.hidden = false;
@@ -938,6 +944,16 @@ function getLegacyLocalMatches() {
 }
 
 function getLocalAdjustments() {
+  return cloudAdjustments;
+}
+
+function saveLocalAdjustments(adjustments) {
+  cloudAdjustments = Array.isArray(adjustments)
+    ? adjustments
+    : [];
+}
+
+function getLegacyLocalAdjustments() {
   const savedAdjustments = localStorage.getItem(
     LOCAL_ADJUSTMENTS_STORAGE_KEY,
   );
@@ -950,18 +966,11 @@ function getLocalAdjustments() {
     return JSON.parse(savedAdjustments);
   } catch (error) {
     console.warn(
-      "ローカルポイント増減の読み込みに失敗しました。",
+      "旧ローカルポイント増減の読み込みに失敗しました。",
       error,
     );
     return [];
   }
-}
-
-function saveLocalAdjustments(adjustments) {
-  localStorage.setItem(
-    LOCAL_ADJUSTMENTS_STORAGE_KEY,
-    JSON.stringify(adjustments),
-  );
 }
 
 /**
@@ -1485,17 +1494,40 @@ function getMatchMigrationKey(ownerUserId) {
 }
 
 function normalizeCloudMatch(match) {
+  const playerNameById = new Map(
+    getLocalPlayers().map((player) => [
+      String(player.playerId),
+      player.name,
+    ]),
+  );
+
   return {
-    matchId: String(match.matchId), eventId: String(match.eventId),
-    gameType: String(match.gameType || "yonma"), umaPreset: String(match.umaPreset || ""),
-    entryOrderPlayerIds: Array.isArray(match.entryOrderPlayerIds) ? match.entryOrderPlayerIds.map(String) : [],
-    tieBreakOrderPlayerIds: Array.isArray(match.tieBreakOrderPlayerIds) ? match.tieBreakOrderPlayerIds.map(String) : [],
-    results: Array.isArray(match.results) ? match.results.map((result) => ({
-      playerId: String(result.playerId), playerName: String(result.playerName || ""),
-      points: Number(result.points), rank: Number(result.rank), rankPoint: Number(result.rankPoint), finalScore: Number(result.finalScore),
-    })) : [],
+    matchId: String(match.matchId),
+    eventId: String(match.eventId),
+    gameType: String(match.gameType || "yonma"),
+    umaPreset: String(match.umaPreset || ""),
+    entryOrderPlayerIds: Array.isArray(match.entryOrderPlayerIds)
+      ? match.entryOrderPlayerIds.map(String)
+      : [],
+    tieBreakOrderPlayerIds: Array.isArray(match.tieBreakOrderPlayerIds)
+      ? match.tieBreakOrderPlayerIds.map(String)
+      : [],
+    results: Array.isArray(match.results)
+      ? match.results.map((result) => ({
+          playerId: String(result.playerId),
+          playerName:
+            String(result.playerName || "") ||
+            playerNameById.get(String(result.playerId)) ||
+            "不明なプレイヤー",
+          points: Number(result.points),
+          rank: Number(result.rank),
+          rankPoint: Number(result.rankPoint),
+          finalScore: Number(result.finalScore),
+        }))
+      : [],
     playedAt: String(match.playedAt || match.createdAt || ""),
-    createdAt: String(match.createdAt || ""), updatedAt: String(match.updatedAt || ""),
+    createdAt: String(match.createdAt || ""),
+    updatedAt: String(match.updatedAt || ""),
   };
 }
 
@@ -1537,6 +1569,138 @@ async function loadMatchesFromSheet({ force = false } = {}) {
 }
 
 
+function getAdjustmentMigrationKey(ownerUserId) {
+  return `imajan.adjustmentMigration.v1.${ownerUserId}`;
+}
+
+function normalizeCloudAdjustment(adjustment) {
+  const playerNameById = new Map(
+    getLocalPlayers().map((player) => [
+      String(player.playerId),
+      player.name,
+    ]),
+  );
+
+  return {
+    adjustmentId: String(adjustment.adjustmentId),
+    eventId: String(adjustment.eventId),
+    title: String(adjustment.title || ""),
+    entries: Array.isArray(adjustment.entries)
+      ? adjustment.entries.map((entry) => ({
+          playerId: String(entry.playerId),
+          playerName:
+            String(entry.playerName || "") ||
+            playerNameById.get(String(entry.playerId)) ||
+            "不明なプレイヤー",
+          points: Number(entry.points),
+        }))
+      : [],
+    adjustedAt: String(
+      adjustment.adjustedAt || adjustment.createdAt || "",
+    ),
+    createdAt: String(adjustment.createdAt || ""),
+    updatedAt: String(adjustment.updatedAt || ""),
+  };
+}
+
+async function saveAdjustmentOnSheet(adjustment) {
+  const saved = await callGasApi("saveAdjustment", {
+    ownerUserId: currentUser.userId,
+    ...adjustment,
+    preferredAdjustmentId: adjustment.adjustmentId,
+  });
+  const normalized = normalizeCloudAdjustment(saved);
+  const index = cloudAdjustments.findIndex(
+    (item) => item.adjustmentId === normalized.adjustmentId,
+  );
+
+  if (index >= 0) {
+    cloudAdjustments[index] = normalized;
+  } else {
+    cloudAdjustments.push(normalized);
+  }
+
+  return normalized;
+}
+
+async function deleteAdjustmentOnSheet(adjustmentId) {
+  await callGasApi("deleteAdjustment", {
+    ownerUserId: currentUser.userId,
+    adjustmentId,
+  });
+  cloudAdjustments = cloudAdjustments.filter(
+    (adjustment) => adjustment.adjustmentId !== adjustmentId,
+  );
+}
+
+async function migrateLegacyAdjustmentsToSheet() {
+  const migrationKey = getAdjustmentMigrationKey(
+    currentUser.userId,
+  );
+
+  if (localStorage.getItem(migrationKey) === "done") {
+    return;
+  }
+
+  const ownedEventIds = new Set(
+    cloudEvents
+      .filter(
+        (event) => event.ownerUserId === currentUser.userId,
+      )
+      .map((event) => event.eventId),
+  );
+  const legacyAdjustments = getLegacyLocalAdjustments().filter(
+    (adjustment) =>
+      ownedEventIds.has(String(adjustment.eventId)),
+  );
+
+  for (const adjustment of legacyAdjustments) {
+    await saveAdjustmentOnSheet(adjustment);
+  }
+
+  localStorage.setItem(migrationKey, "done");
+}
+
+async function loadAdjustmentsFromSheet({ force = false } = {}) {
+  if (!currentUser) {
+    return [];
+  }
+
+  if (
+    !force &&
+    loadedAdjustmentOwnerUserId === currentUser.userId
+  ) {
+    return cloudAdjustments;
+  }
+
+  if (adjustmentLoadPromise) {
+    return adjustmentLoadPromise;
+  }
+
+  adjustmentLoadPromise = (async () => {
+    await Promise.all([
+      loadEventsFromSheet(),
+      loadPlayersFromSheet(),
+    ]);
+    await migrateLegacyAdjustmentsToSheet();
+    const adjustments = await callGasApi("listAdjustments", {
+      ownerUserId: currentUser.userId,
+    });
+    cloudAdjustments = Array.isArray(adjustments)
+      ? adjustments.map(normalizeCloudAdjustment)
+      : [];
+    loadedAdjustmentOwnerUserId = currentUser.userId;
+    return cloudAdjustments;
+  })();
+
+  try {
+    return await adjustmentLoadPromise;
+  } finally {
+    adjustmentLoadPromise = null;
+  }
+}
+
+
 async function showEventDetailScreen(event = currentEvent) {
   if (!event) {
     showEventListScreen();
@@ -1558,7 +1722,11 @@ async function showEventDetailScreen(event = currentEvent) {
   showLoading("大会データを読み込んでいます…");
 
   try {
-    await Promise.all([loadPlayersFromSheet(), loadMatchesFromSheet()]);
+    await Promise.all([
+      loadPlayersFromSheet(),
+      loadMatchesFromSheet(),
+      loadAdjustmentsFromSheet(),
+    ]);
     renderEventDetail();
   } catch (error) {
     console.error(error);
@@ -2471,7 +2639,7 @@ function showAdjustmentEditScreen(adjustment) {
   prepareAdjustmentForm({ adjustment });
 }
 
-function handleAdjustmentSubmit(event) {
+async function handleAdjustmentSubmit(event) {
   event.preventDefault();
 
   const entries = readAdjustmentEntries();
@@ -2527,7 +2695,15 @@ function handleAdjustmentSubmit(event) {
       });
     }
 
-    saveLocalAdjustments(adjustments);
+    const targetAdjustment = currentEditingAdjustment
+      ? adjustments.find(
+          (adjustment) =>
+            adjustment.adjustmentId ===
+            currentEditingAdjustment.adjustmentId,
+        )
+      : adjustments[adjustments.length - 1];
+
+    await saveAdjustmentOnSheet(targetAdjustment);
     rebuildPlayerStatsForEvent(currentEvent.eventId);
     currentEditingAdjustment = null;
     showEventDetailScreen();
@@ -2549,7 +2725,7 @@ function handleAdjustmentSubmit(event) {
   }
 }
 
-function handleAdjustmentDelete() {
+async function handleAdjustmentDelete() {
   if (!currentEditingAdjustment) {
     return;
   }
@@ -2567,13 +2743,9 @@ function handleAdjustmentDelete() {
   adjustmentDeleteButton.textContent = "削除中...";
 
   try {
-    const adjustments = getLocalAdjustments().filter(
-      (adjustment) =>
-        adjustment.adjustmentId !==
-        currentEditingAdjustment.adjustmentId,
+    await deleteAdjustmentOnSheet(
+      currentEditingAdjustment.adjustmentId,
     );
-
-    saveLocalAdjustments(adjustments);
     rebuildPlayerStatsForEvent(currentEvent.eventId);
     currentEditingAdjustment = null;
     showEventDetailScreen();

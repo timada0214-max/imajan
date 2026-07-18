@@ -35,6 +35,18 @@ const logoutButton = document.getElementById("logout-button");
 const eventListButton = document.getElementById("event-list-button");
 const createEventButton = document.getElementById("create-event-button");
 const homeMessage = document.getElementById("home-message");
+const connectionStatusBadge = document.getElementById(
+  "connection-status-badge",
+);
+const connectionDescription = document.getElementById(
+  "connection-description",
+);
+const connectionTestButton = document.getElementById(
+  "connection-test-button",
+);
+const connectionMessage = document.getElementById(
+  "connection-message",
+);
 
 const eventListBackButton = document.getElementById(
   "event-list-back-button",
@@ -486,6 +498,169 @@ function showLoginScreen() {
 /**
  * ホーム画面を表示します。
  */
+function getApiConfig() {
+  const config = window.IMAJAN_CONFIG || {};
+
+  return {
+    gasWebAppUrl: String(config.GAS_WEB_APP_URL || "").trim(),
+    timeoutMs: Number(config.API_TIMEOUT_MS) || 10000,
+  };
+}
+
+function isGasWebAppConfigured() {
+  const { gasWebAppUrl } = getApiConfig();
+
+  return /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(
+    gasWebAppUrl,
+  );
+}
+
+function setConnectionStatus(status, message = "") {
+  const statusMap = {
+    unconfigured: {
+      text: "未設定",
+      className: "is-unconfigured",
+    },
+    checking: {
+      text: "確認中",
+      className: "is-checking",
+    },
+    connected: {
+      text: "接続済み",
+      className: "is-connected",
+    },
+    error: {
+      text: "接続エラー",
+      className: "is-error",
+    },
+  };
+  const nextStatus = statusMap[status] || statusMap.unconfigured;
+
+  connectionStatusBadge.textContent = nextStatus.text;
+  connectionStatusBadge.className =
+    `connection-status-badge ${nextStatus.className}`;
+
+  connectionMessage.textContent = message;
+  connectionMessage.className =
+    status === "connected"
+      ? "form-message is-success"
+      : status === "error"
+        ? "form-message is-error"
+        : "form-message";
+}
+
+function renderConnectionCard() {
+  if (isGasWebAppConfigured()) {
+    connectionDescription.textContent =
+      "GASのURLが設定されています。接続確認後も、現時点のデータ保存はブラウザ内のままです。";
+    connectionTestButton.disabled = false;
+    setConnectionStatus("unconfigured");
+    connectionStatusBadge.textContent = "未確認";
+    return;
+  }
+
+  connectionDescription.textContent =
+    "現在はこの端末のブラウザ内に保存しています。config.jsにGASのウェブアプリURLを設定してください。";
+  connectionTestButton.disabled = false;
+  setConnectionStatus("unconfigured");
+}
+
+async function callGasApi(action, payload = null) {
+  const { gasWebAppUrl, timeoutMs } = getApiConfig();
+
+  if (!isGasWebAppConfigured()) {
+    throw new Error(
+      "config.jsにGASのウェブアプリURLが設定されていません。",
+    );
+  }
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    timeoutMs,
+  );
+
+  try {
+    let response;
+
+    if (payload === null) {
+      const url = new URL(gasWebAppUrl);
+      url.searchParams.set("action", action);
+      url.searchParams.set("_", String(Date.now()));
+
+      response = await fetch(url.toString(), {
+        method: "GET",
+        redirect: "follow",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+    } else {
+      response = await fetch(gasWebAppUrl, {
+        method: "POST",
+        redirect: "follow",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        body: JSON.stringify({
+          action,
+          payload,
+        }),
+        signal: controller.signal,
+      });
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `GASからHTTP ${response.status}が返されました。`,
+      );
+    }
+
+    const result = await response.json();
+
+    if (!result || result.ok !== true) {
+      const apiError = new Error(
+        result?.error?.message ||
+          "GASから正常な応答を受け取れませんでした。",
+      );
+      apiError.code =
+        result?.error?.code || "API_RESPONSE_ERROR";
+      throw apiError;
+    }
+
+    return result.data;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(
+        "接続確認がタイムアウトしました。GASのURLとデプロイ設定を確認してください。",
+      );
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+async function handleConnectionTest() {
+  connectionTestButton.disabled = true;
+  setConnectionStatus("checking", "GASへ接続しています…");
+
+  try {
+    const data = await callGasApi("ping");
+
+    setConnectionStatus(
+      "connected",
+      `${data.appName || "IMAJAN"} APIに接続しました。` +
+        ` スプレッドシート：${data.spreadsheetName || "確認済み"}`,
+    );
+  } catch (error) {
+    console.error("GAS接続確認に失敗しました。", error);
+    setConnectionStatus("error", error.message);
+  } finally {
+    connectionTestButton.disabled = false;
+  }
+}
+
 function showHomeScreen(user = currentUser) {
   if (!user) {
     showLoginScreen();
@@ -508,6 +683,7 @@ function showHomeScreen(user = currentUser) {
     "aria-label",
     "暗証番号を表示する",
   );
+  renderConnectionCard();
 }
 
 /**
@@ -748,33 +924,79 @@ function createUserLocally({ nickname, pin }) {
 }
 
 /**
- * 実行環境に応じてログイン処理を呼び分けます。
+ * APIのユーザー情報を、既存画面が扱える形式へ整えます。
  */
-async function requestLogin(payload) {
-  if (isGasRuntime()) {
-    return callGasFunction("loginUser", payload);
-  }
-
-  await new Promise((resolve) => {
-    window.setTimeout(resolve, 350);
-  });
-
-  return loginUserLocally(payload);
+function wrapUserApiResponse(user) {
+  return {
+    success: true,
+    data: user,
+  };
 }
 
 /**
- * 実行環境に応じて新規登録処理を呼び分けます。
+ * localStorageに残っている旧ユーザーを探します。
+ * STEP9-2以前に作成したアカウントの初回移行に使用します。
  */
-async function requestSignup(payload) {
-  if (isGasRuntime()) {
-    return callGasFunction("createUser", payload);
+function findMatchingLocalUser({ nickname, pin }) {
+  return getLocalUsers().find(
+    (user) =>
+      user.nickname === nickname &&
+      user.pin === pin,
+  );
+}
+
+/**
+ * スプレッドシート上のユーザーでログインします。
+ *
+ * STEP9-2以前のローカルユーザーだった場合は、
+ * 初回ログイン時にUsersシートへ自動移行します。
+ */
+async function requestLogin(payload) {
+  if (!isGasWebAppConfigured()) {
+    throw new Error(
+      "GAS接続が未設定です。config.jsを確認してください。",
+    );
   }
 
-  await new Promise((resolve) => {
-    window.setTimeout(resolve, 350);
-  });
+  try {
+    const user = await callGasApi("loginUser", payload);
+    return wrapUserApiResponse(user);
+  } catch (error) {
+    const localUser = findMatchingLocalUser(payload);
 
-  return createUserLocally(payload);
+    if (!localUser) {
+      throw error;
+    }
+
+    try {
+      const migratedUser = await callGasApi("createUser", {
+        ...payload,
+        preferredUserId: localUser.userId,
+      });
+
+      return wrapUserApiResponse(migratedUser);
+    } catch (migrationError) {
+      if (migrationError.code === "DUPLICATE_NICKNAME") {
+        throw error;
+      }
+
+      throw migrationError;
+    }
+  }
+}
+
+/**
+ * 新規ユーザーをUsersシートへ保存します。
+ */
+async function requestSignup(payload) {
+  if (!isGasWebAppConfigured()) {
+    throw new Error(
+      "GAS接続が未設定です。config.jsを確認してください。",
+    );
+  }
+
+  const user = await callGasApi("createUser", payload);
+  return wrapUserApiResponse(user);
 }
 
 /**
@@ -3749,6 +3971,11 @@ playerAddBackButton.addEventListener("click", () => {
 playerAddForm.addEventListener(
   "submit",
   handlePlayerAddSubmit,
+);
+
+connectionTestButton.addEventListener(
+  "click",
+  handleConnectionTest,
 );
 
 playerNameInput.addEventListener("input", () => {

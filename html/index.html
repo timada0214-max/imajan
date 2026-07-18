@@ -159,6 +159,41 @@
             </button>
           </section>
 
+          <section class="connection-card" aria-labelledby="connection-title">
+            <div class="connection-card-heading">
+              <div>
+                <p class="connection-card-label">データ保存先</p>
+                <h2 id="connection-title">Googleスプレッドシート接続</h2>
+              </div>
+
+              <span
+                id="connection-status-badge"
+                class="connection-status-badge is-unconfigured"
+              >
+                未設定
+              </span>
+            </div>
+
+            <p id="connection-description" class="connection-description">
+              現在はこの端末のブラウザ内に保存しています。
+            </p>
+
+            <button
+              id="connection-test-button"
+              class="secondary-button connection-test-button"
+              type="button"
+            >
+              接続を確認
+            </button>
+
+            <p
+              id="connection-message"
+              class="form-message"
+              role="status"
+              aria-live="polite"
+            ></p>
+          </section>
+
           <p
             id="home-message"
             class="home-message"
@@ -897,6 +932,7 @@
 
     </main>
 
+    <script src="./config.js"></script>
     <script src="./script.js"></script>
   </body>
 </html>

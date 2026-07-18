@@ -2468,3 +2468,83 @@ select:focus {
     justify-self: start;
   }
 }
+
+
+/* STEP9-1：GAS接続確認 */
+.connection-card {
+  display: grid;
+  gap: 12px;
+
+  padding: 16px;
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-large);
+  background: #ffffff;
+  box-shadow: var(--shadow-card);
+}
+
+.connection-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.connection-card-label {
+  margin: 0 0 3px;
+  color: var(--color-text-sub);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.connection-card h2 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.connection-description {
+  margin: 0;
+  color: var(--color-text-sub);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.connection-status-badge {
+  flex: 0 0 auto;
+
+  padding: 5px 9px;
+
+  border-radius: 999px;
+
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.connection-status-badge.is-unconfigured {
+  background: #f1f3f2;
+  color: #68716b;
+}
+
+.connection-status-badge.is-checking {
+  background: #fff6db;
+  color: #8c6a00;
+}
+
+.connection-status-badge.is-connected {
+  background: #e8f7eb;
+  color: #246b37;
+}
+
+.connection-status-badge.is-error {
+  background: #fff0f0;
+  color: #a23f3f;
+}
+
+.connection-test-button {
+  width: 100%;
+}
+
+.connection-test-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}

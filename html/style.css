@@ -2239,3 +2239,232 @@ select:focus {
       40px 40px 40px;
   }
 }
+
+
+/* STEP8-2：区間集計 */
+.standings-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+
+  margin: 14px 0 12px;
+  padding: 4px;
+
+  border-radius: 12px;
+  background: #edf3ee;
+}
+
+.standings-mode-button {
+  min-height: 40px;
+  padding: 8px 12px;
+
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-text-sub);
+
+  font-weight: 800;
+}
+
+.standings-mode-button.is-active {
+  background: #ffffff;
+  color: var(--color-primary-dark);
+  box-shadow: 0 2px 8px rgb(33 75 46 / 10%);
+}
+
+.range-summary-panel {
+  display: grid;
+  gap: 12px;
+
+  margin-bottom: 12px;
+  padding: 14px;
+
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-medium);
+  background: #fbfdfb;
+}
+
+.range-summary-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.range-summary-heading h3 {
+  margin: 0 0 3px;
+  font-size: 0.95rem;
+}
+
+.range-summary-heading p {
+  margin: 0;
+  color: var(--color-text-sub);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.range-selected-count {
+  flex: 0 0 auto;
+
+  padding: 5px 9px;
+
+  border-radius: 999px;
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.range-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.range-action-button {
+  min-height: 36px;
+  padding: 7px 10px;
+
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: #ffffff;
+  color: var(--color-text-main);
+
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.range-summary-guide {
+  margin: -3px 0 0;
+  color: var(--color-text-sub);
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+
+.range-record-list {
+  display: grid;
+  gap: 8px;
+
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.range-record-item {
+  display: grid;
+  grid-template-columns: auto 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+
+  min-height: 52px;
+  padding: 8px 10px;
+
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.range-record-item:has(input:checked) {
+  border-color: #a9ceb1;
+  background: #f5fbf6;
+}
+
+.range-record-checkbox {
+  width: 19px;
+  height: 19px;
+  margin: 0;
+
+  accent-color: var(--color-primary);
+}
+
+.range-record-sequence {
+  display: grid;
+  place-items: center;
+
+  width: 32px;
+  height: 32px;
+
+  border-radius: 999px;
+  background: #edf3ee;
+  color: var(--color-text-sub);
+
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.range-record-content {
+  min-width: 0;
+}
+
+.range-record-title {
+  display: block;
+  overflow: hidden;
+
+  font-size: 0.84rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.range-record-meta {
+  display: block;
+  margin-top: 2px;
+
+  color: var(--color-text-sub);
+  font-size: 0.72rem;
+}
+
+.range-record-type {
+  padding: 4px 7px;
+
+  border-radius: 999px;
+
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.range-record-type.is-match {
+  background: #edf7ef;
+  color: #337144;
+}
+
+.range-record-type.is-adjustment {
+  background: #f3f0fa;
+  color: #6c5496;
+}
+
+.standings-scope-caption {
+  margin: 0 0 10px;
+  color: var(--color-text-sub);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 520px) {
+  .range-summary-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .range-selected-count {
+    align-self: flex-start;
+  }
+
+  .range-summary-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .range-action-button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .range-record-item {
+    grid-template-columns: auto 30px minmax(0, 1fr);
+  }
+
+  .range-record-type {
+    grid-column: 3;
+    justify-self: start;
+  }
+}

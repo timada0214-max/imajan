@@ -449,6 +449,84 @@
               </button>
             </div>
 
+            <div class="standings-mode-tabs" role="tablist">
+              <button
+                id="standings-all-button"
+                class="standings-mode-button is-active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+              >
+                通算成績
+              </button>
+              <button
+                id="standings-range-button"
+                class="standings-mode-button"
+                type="button"
+                role="tab"
+                aria-selected="false"
+              >
+                区間集計
+              </button>
+            </div>
+
+            <section id="range-summary-panel" class="range-summary-panel" hidden>
+              <div class="range-summary-heading">
+                <div>
+                  <h3>集計する記録を選択</h3>
+                  <p>
+                    半荘とポイント増減を、登録順にまとめて表示しています。
+                  </p>
+                </div>
+
+                <span id="range-selected-count" class="range-selected-count">
+                  0件選択
+                </span>
+              </div>
+
+              <div class="range-summary-actions">
+                <button
+                  id="range-select-all-button"
+                  class="range-action-button"
+                  type="button"
+                >
+                  すべて選択
+                </button>
+                <button
+                  id="range-clear-button"
+                  class="range-action-button"
+                  type="button"
+                >
+                  すべて解除
+                </button>
+                <button
+                  id="range-to-latest-button"
+                  class="range-action-button"
+                  type="button"
+                >
+                  選択位置から最新まで
+                </button>
+              </div>
+
+              <p class="range-summary-guide">
+                「選択位置から最新まで」は、選択中の最も古い記録以降をまとめて選びます。
+              </p>
+
+              <div id="range-record-list" class="range-record-list"></div>
+
+              <section
+                id="range-empty-state"
+                class="mini-empty-state"
+                hidden
+              >
+                <p>まだ集計できる記録がありません。</p>
+              </section>
+            </section>
+
+            <p id="standings-scope-caption" class="standings-scope-caption">
+              すべての半荘・ポイント増減を集計
+            </p>
+
             <div id="player-ranking-list" class="player-ranking-list"></div>
 
             <section id="player-empty-state" class="mini-empty-state">

@@ -107,6 +107,36 @@ const eventSummaryUma = document.getElementById(
 const playerCountText = document.getElementById(
   "player-count-text",
 );
+const standingsAllButton = document.getElementById(
+  "standings-all-button",
+);
+const standingsRangeButton = document.getElementById(
+  "standings-range-button",
+);
+const rangeSummaryPanel = document.getElementById(
+  "range-summary-panel",
+);
+const rangeSelectedCount = document.getElementById(
+  "range-selected-count",
+);
+const rangeSelectAllButton = document.getElementById(
+  "range-select-all-button",
+);
+const rangeClearButton = document.getElementById(
+  "range-clear-button",
+);
+const rangeToLatestButton = document.getElementById(
+  "range-to-latest-button",
+);
+const rangeRecordList = document.getElementById(
+  "range-record-list",
+);
+const rangeEmptyState = document.getElementById(
+  "range-empty-state",
+);
+const standingsScopeCaption = document.getElementById(
+  "standings-scope-caption",
+);
 const matchCountText = document.getElementById(
   "match-count-text",
 );
@@ -274,6 +304,9 @@ let currentEventStatus = "active";
 let currentEvent = null;
 let currentEditingMatch = null;
 let tieBreakOrderByPoints = new Map();
+let standingsMode = "all";
+let selectedRangeRecordKeys = new Set();
+let rangeSelectionInitializedEventId = null;
 let currentEditingAdjustment = null;
 
 /**
@@ -905,11 +938,282 @@ function showEventDetailScreen(event = currentEvent) {
     return;
   }
 
+  const isDifferentEvent =
+    currentEvent?.eventId !== event.eventId;
   currentEvent = event;
+
+  if (isDifferentEvent) {
+    standingsMode = "all";
+    selectedRangeRecordKeys = new Set();
+    rangeSelectionInitializedEventId = null;
+  }
 
   hideAllScreens();
   eventDetailScreen.hidden = false;
 
+  renderEventDetail();
+}
+
+function getEventTimelineRecords(eventId = currentEvent?.eventId) {
+  if (!eventId) {
+    return [];
+  }
+
+  const matches = getLocalMatches()
+    .filter((match) => match.eventId === eventId)
+    .map((match) => ({
+      key: `match:${match.matchId}`,
+      type: "match",
+      id: match.matchId,
+      createdAt: match.createdAt,
+      data: match,
+    }));
+
+  const adjustments = getLocalAdjustments()
+    .filter((adjustment) => adjustment.eventId === eventId)
+    .map((adjustment) => ({
+      key: `adjustment:${adjustment.adjustmentId}`,
+      type: "adjustment",
+      id: adjustment.adjustmentId,
+      createdAt: adjustment.createdAt,
+      data: adjustment,
+    }));
+
+  return [...matches, ...adjustments].sort(
+    (a, b) =>
+      new Date(a.createdAt).getTime() -
+      new Date(b.createdAt).getTime(),
+  );
+}
+
+function createPlayerStatsFromRecords(eventId, records) {
+  const players = getLocalPlayers()
+    .filter((player) => player.eventId === eventId)
+    .map((player) => ({
+      ...player,
+      rankCounts: [0, 0, 0, 0],
+      matchCount: 0,
+      averageRank: 0,
+      totalScore: 0,
+    }));
+
+  const matches = records
+    .filter((record) => record.type === "match")
+    .map((record) => record.data);
+  const adjustments = records
+    .filter((record) => record.type === "adjustment")
+    .map((record) => record.data);
+
+  players.forEach((player) => {
+    const playerResults = matches.flatMap((match) =>
+      match.results.filter(
+        (result) => result.playerId === player.playerId,
+      ),
+    );
+    const rankCounts = [0, 0, 0, 0];
+
+    playerResults.forEach((result) => {
+      const rankIndex = Number(result.rank) - 1;
+
+      if (rankIndex >= 0 && rankIndex < rankCounts.length) {
+        rankCounts[rankIndex] += 1;
+      }
+    });
+
+    const totalRank = playerResults.reduce(
+      (sum, result) => sum + Number(result.rank || 0),
+      0,
+    );
+    const matchScore = playerResults.reduce(
+      (sum, result) =>
+        sum + Number(result.finalScore || 0),
+      0,
+    );
+    const adjustmentScore = adjustments.reduce(
+      (sum, adjustment) => {
+        const entry = adjustment.entries.find(
+          (item) => item.playerId === player.playerId,
+        );
+
+        return sum + Number(entry?.points || 0);
+      },
+      0,
+    );
+
+    player.matchCount = playerResults.length;
+    player.rankCounts = rankCounts;
+    player.averageRank =
+      playerResults.length > 0
+        ? Math.round(
+            (totalRank / playerResults.length) * 100,
+          ) / 100
+        : 0;
+    player.totalScore =
+      Math.round((matchScore + adjustmentScore) * 10) / 10;
+  });
+
+  return players.sort(comparePlayerStandings);
+}
+
+function formatRangeRecordDate(dateText) {
+  const date = new Date(dateText);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleString("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getRangeRecordTitle(record, timelineIndex) {
+  if (record.type === "adjustment") {
+    return record.data.title || "ポイント増減";
+  }
+
+  const matchNumber =
+    getEventTimelineRecords()
+      .slice(0, timelineIndex + 1)
+      .filter((item) => item.type === "match").length;
+
+  return `第${matchNumber}半荘`;
+}
+
+function initializeRangeSelection(records) {
+  if (
+    rangeSelectionInitializedEventId === currentEvent?.eventId
+  ) {
+    const validKeys = new Set(
+      records.map((record) => record.key),
+    );
+
+    selectedRangeRecordKeys = new Set(
+      Array.from(selectedRangeRecordKeys).filter((key) =>
+        validKeys.has(key),
+      ),
+    );
+    return;
+  }
+
+  selectedRangeRecordKeys = new Set(
+    records.map((record) => record.key),
+  );
+  rangeSelectionInitializedEventId = currentEvent?.eventId || null;
+}
+
+function renderRangeRecordList(records) {
+  rangeRecordList.replaceChildren();
+  rangeEmptyState.hidden = records.length > 0;
+
+  records.forEach((record, index) => {
+    const label = document.createElement("label");
+    label.className = "range-record-item";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "range-record-checkbox";
+    checkbox.checked = selectedRangeRecordKeys.has(record.key);
+    checkbox.setAttribute(
+      "aria-label",
+      `${getRangeRecordTitle(record, index)}を集計対象にする`,
+    );
+
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        selectedRangeRecordKeys.add(record.key);
+      } else {
+        selectedRangeRecordKeys.delete(record.key);
+      }
+
+      renderEventDetail();
+    });
+
+    const sequence = document.createElement("span");
+    sequence.className = "range-record-sequence";
+    sequence.textContent = String(index + 1);
+
+    const content = document.createElement("span");
+    content.className = "range-record-content";
+
+    const title = document.createElement("span");
+    title.className = "range-record-title";
+    title.textContent = getRangeRecordTitle(record, index);
+
+    const meta = document.createElement("span");
+    meta.className = "range-record-meta";
+    meta.textContent = formatRangeRecordDate(record.createdAt);
+
+    content.append(title, meta);
+
+    const type = document.createElement("span");
+    type.className =
+      `range-record-type ${
+        record.type === "match"
+          ? "is-match"
+          : "is-adjustment"
+      }`;
+    type.textContent =
+      record.type === "match" ? "半荘" : "ポイント増減";
+
+    label.append(checkbox, sequence, content, type);
+    rangeRecordList.appendChild(label);
+  });
+
+  rangeSelectedCount.textContent =
+    `${selectedRangeRecordKeys.size}件選択`;
+}
+
+function getSelectedRangeRecords(records) {
+  return records.filter((record) =>
+    selectedRangeRecordKeys.has(record.key),
+  );
+}
+
+function setStandingsMode(mode) {
+  standingsMode = mode;
+  renderEventDetail();
+}
+
+function selectAllRangeRecords() {
+  const records = getEventTimelineRecords();
+
+  selectedRangeRecordKeys = new Set(
+    records.map((record) => record.key),
+  );
+  renderEventDetail();
+}
+
+function clearRangeRecords() {
+  selectedRangeRecordKeys = new Set();
+  renderEventDetail();
+}
+
+function selectFromOldestSelectedToLatest() {
+  const records = getEventTimelineRecords();
+  const selectedIndexes = records
+    .map((record, index) =>
+      selectedRangeRecordKeys.has(record.key) ? index : -1,
+    )
+    .filter((index) => index >= 0);
+
+  if (selectedIndexes.length === 0) {
+    window.alert(
+      "開始位置にする記録を1件以上選択してください。",
+    );
+    return;
+  }
+
+  const startIndex = Math.min(...selectedIndexes);
+
+  selectedRangeRecordKeys = new Set(
+    records
+      .slice(startIndex)
+      .map((record) => record.key),
+  );
   renderEventDetail();
 }
 
@@ -920,9 +1224,20 @@ function renderEventDetail() {
 
   rebuildPlayerStatsForEvent(currentEvent.eventId);
 
-  const players = getLocalPlayers()
+  const timelineRecords = getEventTimelineRecords();
+  initializeRangeSelection(timelineRecords);
+
+  const allPlayers = getLocalPlayers()
     .filter((player) => player.eventId === currentEvent.eventId)
     .sort(comparePlayerStandings);
+  const selectedRecords =
+    getSelectedRangeRecords(timelineRecords);
+  const rangePlayers = createPlayerStatsFromRecords(
+    currentEvent.eventId,
+    selectedRecords,
+  );
+  const players =
+    standingsMode === "range" ? rangePlayers : allPlayers;
 
   const eventTypeText =
     currentEvent.eventType === "single"
@@ -943,6 +1258,42 @@ function renderEventDetail() {
     currentEvent.umaPreset === "none"
       ? "ウマ・オカなし"
       : currentEvent.umaPreset;
+
+  standingsAllButton.classList.toggle(
+    "is-active",
+    standingsMode === "all",
+  );
+  standingsRangeButton.classList.toggle(
+    "is-active",
+    standingsMode === "range",
+  );
+  standingsAllButton.setAttribute(
+    "aria-selected",
+    String(standingsMode === "all"),
+  );
+  standingsRangeButton.setAttribute(
+    "aria-selected",
+    String(standingsMode === "range"),
+  );
+  rangeSummaryPanel.hidden = standingsMode !== "range";
+
+  if (standingsMode === "range") {
+    renderRangeRecordList(timelineRecords);
+
+    const selectedMatchCount = selectedRecords.filter(
+      (record) => record.type === "match",
+    ).length;
+    const selectedAdjustmentCount = selectedRecords.filter(
+      (record) => record.type === "adjustment",
+    ).length;
+
+    standingsScopeCaption.textContent =
+      `${selectedMatchCount}半荘・` +
+      `${selectedAdjustmentCount}件のポイント増減を集計`;
+  } else {
+    standingsScopeCaption.textContent =
+      "すべての半荘・ポイント増減を集計";
+  }
 
   playerCountText.textContent =
     `${players.length}人登録・総合ポイント順（ポイント増減を含む）`;
@@ -3337,6 +3688,28 @@ openAdjustmentCreateButton.addEventListener(
   showAdjustmentCreateScreen,
 );
 
+standingsAllButton.addEventListener("click", () => {
+  setStandingsMode("all");
+});
+
+standingsRangeButton.addEventListener("click", () => {
+  setStandingsMode("range");
+});
+
+rangeSelectAllButton.addEventListener(
+  "click",
+  selectAllRangeRecords,
+);
+
+rangeClearButton.addEventListener(
+  "click",
+  clearRangeRecords,
+);
+
+rangeToLatestButton.addEventListener(
+  "click",
+  selectFromOldestSelectedToLatest,
+);
 
 
 matchCreateBackButton.addEventListener("click", () => {

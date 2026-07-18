@@ -314,6 +314,9 @@ const adjustmentDeleteButton = document.getElementById(
 let currentUser = null;
 let currentEventStatus = "active";
 let currentEvent = null;
+let cloudEvents = [];
+let eventLoadPromise = null;
+let loadedEventOwnerUserId = null;
 let currentEditingMatch = null;
 let tieBreakOrderByPoints = new Map();
 let standingsMode = "all";
@@ -482,6 +485,10 @@ function hideAllScreens() {
  * ログイン画面を表示します。
  */
 function showLoginScreen() {
+  cloudEvents = [];
+  loadedEventOwnerUserId = null;
+  eventLoadPromise = null;
+
   hideAllScreens();
   loginScreen.hidden = false;
 
@@ -689,7 +696,7 @@ function showHomeScreen(user = currentUser) {
 /**
  * イベント一覧画面を表示します。
  */
-function showEventListScreen() {
+async function showEventListScreen() {
   if (!currentUser) {
     showLoginScreen();
     return;
@@ -699,6 +706,21 @@ function showEventListScreen() {
   eventListScreen.hidden = false;
 
   renderEventList();
+
+  try {
+    await loadEventsFromSheet();
+    renderEventList();
+  } catch (error) {
+    console.error(error);
+
+    eventEmptyState.hidden = false;
+    emptyStateTitle.textContent =
+      "イベントを読み込めませんでした";
+    emptyStateDescription.textContent =
+      error.message ||
+      "通信状態を確認して、もう一度お試しください。";
+    emptyStateCreateButton.hidden = false;
+  }
 }
 
 /**
@@ -760,9 +782,18 @@ function saveLocalUsers(users) {
 }
 
 /**
- * ローカル確認用のイベント一覧を取得します。
+ * 現在ログイン中のユーザーについて、
+ * スプレッドシートから読み込んだイベント一覧を返します。
  */
 function getLocalEvents() {
+  return cloudEvents;
+}
+
+/**
+ * STEP9-3以前にlocalStorageへ保存されていたイベントを取得します。
+ * 初回移行専用です。
+ */
+function getLegacyLocalEvents() {
   const savedEvents = localStorage.getItem(
     LOCAL_EVENTS_STORAGE_KEY,
   );
@@ -774,7 +805,10 @@ function getLocalEvents() {
   try {
     return JSON.parse(savedEvents);
   } catch (error) {
-    console.warn("ローカルイベントの読み込みに失敗しました。", error);
+    console.warn(
+      "旧ローカルイベントの読み込みに失敗しました。",
+      error,
+    );
     return [];
   }
 }
@@ -1023,6 +1057,103 @@ function formatDate(dateText) {
 /**
  * イベントカードを生成します。
  */
+function getEventMigrationKey(userId) {
+  return `imajan.eventsMigrated.${userId}`;
+}
+
+function getLocalMatchCount(eventId) {
+  return getLocalMatches().filter(
+    (match) => match.eventId === eventId,
+  ).length;
+}
+
+function normalizeCloudEvent(event) {
+  return {
+    ...event,
+    matchCount: Math.max(
+      Number(event.matchCount || 0),
+      getLocalMatchCount(event.eventId),
+    ),
+  };
+}
+
+async function migrateLegacyEventsToSheet() {
+  if (!currentUser) {
+    return;
+  }
+
+  const migrationKey = getEventMigrationKey(
+    currentUser.userId,
+  );
+
+  if (localStorage.getItem(migrationKey) === "done") {
+    return;
+  }
+
+  const legacyEvents = getLegacyLocalEvents().filter(
+    (event) =>
+      !event.ownerUserId ||
+      event.ownerUserId === currentUser.userId,
+  );
+
+  for (const legacyEvent of legacyEvents) {
+    await callGasApi("createEvent", {
+      ownerUserId: currentUser.userId,
+      name: legacyEvent.name,
+      eventType: legacyEvent.eventType,
+      gameType: legacyEvent.gameType,
+      umaPreset: legacyEvent.umaPreset,
+      status: legacyEvent.status || "active",
+      preferredEventId: legacyEvent.eventId,
+      createdAt: legacyEvent.createdAt,
+      updatedAt: legacyEvent.updatedAt,
+    });
+  }
+
+  localStorage.setItem(migrationKey, "done");
+}
+
+async function loadEventsFromSheet({ force = false } = {}) {
+  if (!currentUser) {
+    cloudEvents = [];
+    loadedEventOwnerUserId = null;
+    return [];
+  }
+
+  if (
+    !force &&
+    loadedEventOwnerUserId === currentUser.userId &&
+    cloudEvents.length > 0
+  ) {
+    return cloudEvents;
+  }
+
+  if (eventLoadPromise) {
+    return eventLoadPromise;
+  }
+
+  eventLoadPromise = (async () => {
+    await migrateLegacyEventsToSheet();
+
+    const events = await callGasApi("listEvents", {
+      ownerUserId: currentUser.userId,
+    });
+
+    cloudEvents = Array.isArray(events)
+      ? events.map(normalizeCloudEvent)
+      : [];
+    loadedEventOwnerUserId = currentUser.userId;
+
+    return cloudEvents;
+  })();
+
+  try {
+    return await eventLoadPromise;
+  } finally {
+    eventLoadPromise = null;
+  }
+}
+
 function createEventCard(event) {
   const button = document.createElement("button");
   button.className = "event-card";
@@ -3094,8 +3225,7 @@ function updatePlayersFromMatch() {
 }
 
 function syncEventMatchCount() {
-  const events = getLocalEvents();
-  const event = events.find(
+  const event = cloudEvents.find(
     (item) => item.eventId === currentEvent.eventId,
   );
 
@@ -3108,13 +3238,7 @@ function syncEventMatchCount() {
   ).length;
 
   event.matchCount = matchCount;
-  event.updatedAt = new Date().toISOString();
   currentEvent = event;
-
-  localStorage.setItem(
-    LOCAL_EVENTS_STORAGE_KEY,
-    JSON.stringify(events),
-  );
 }
 
 function handleMatchCreateSubmit(event) {
@@ -3611,16 +3735,6 @@ function validateEventForm() {
   return true;
 }
 
-function saveLocalEvent(event) {
-  const events = getLocalEvents();
-  events.push(event);
-
-  localStorage.setItem(
-    LOCAL_EVENTS_STORAGE_KEY,
-    JSON.stringify(events),
-  );
-}
-
 async function handleEventCreateSubmit(event) {
   event.preventDefault();
 
@@ -3632,30 +3746,28 @@ async function handleEventCreateSubmit(event) {
   eventSaveButton.textContent = "作成中...";
 
   try {
-    const now = new Date().toISOString();
-
-    const newEvent = {
-      eventId: `local-event-${Date.now()}`,
+    const createdEvent = await callGasApi("createEvent", {
       ownerUserId: currentUser.userId,
       name: eventNameInput.value.trim(),
       eventType: getSelectedRadioValue("eventType"),
       gameType: getSelectedRadioValue("gameType"),
       umaPreset: umaPresetSelect.value,
       status: "active",
-      matchCount: 0,
-      createdAt: now,
-      updatedAt: now,
-    };
+    });
 
-    saveLocalEvent(newEvent);
+    cloudEvents.push(normalizeCloudEvent(createdEvent));
+    loadedEventOwnerUserId = currentUser.userId;
 
     currentEventStatus = "active";
     switchEventStatus("active");
+    eventCreateForm.reset();
+    updateScorePreview();
     showEventListScreen();
   } catch (error) {
     console.error(error);
 
     eventCreateMessage.textContent =
+      error.message ||
       "イベントの作成中にエラーが発生しました。";
     eventCreateMessage.className =
       "form-message is-error";

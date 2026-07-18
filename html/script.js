@@ -7,6 +7,7 @@ const LOCAL_EVENTS_STORAGE_KEY = "imajan.localEvents";
 const loginScreen = document.getElementById("login-screen");
 const homeScreen = document.getElementById("home-screen");
 const eventListScreen = document.getElementById("event-list-screen");
+const eventCreateScreen = document.getElementById("event-create-screen");
 
 const loginForm = document.getElementById("login-form");
 const nicknameInput = document.getElementById("nickname");
@@ -52,6 +53,27 @@ const emptyStateTitle = document.getElementById("empty-state-title");
 const emptyStateDescription = document.getElementById(
   "empty-state-description",
 );
+
+const eventCreateBackButton = document.getElementById(
+  "event-create-back-button",
+);
+const eventCreateForm = document.getElementById("event-create-form");
+const eventNameInput = document.getElementById("event-name");
+const eventNameError = document.getElementById("event-name-error");
+const umaPresetSelect = document.getElementById("uma-preset");
+const eventCreateMessage = document.getElementById(
+  "event-create-message",
+);
+const eventSaveButton = document.getElementById("event-save-button");
+
+const rankScore1 = document.getElementById("rank-score-1");
+const rankScore2 = document.getElementById("rank-score-2");
+const rankScore3 = document.getElementById("rank-score-3");
+const rankScore4 = document.getElementById("rank-score-4");
+const rankScore4Wrap = document.getElementById(
+  "rank-score-4-wrap",
+);
+
 
 let currentUser = null;
 let currentEventStatus = "active";
@@ -206,6 +228,7 @@ function hideAllScreens() {
   loginScreen.hidden = true;
   homeScreen.hidden = true;
   eventListScreen.hidden = true;
+  eventCreateScreen.hidden = true;
 }
 
 /**
@@ -591,6 +614,133 @@ function switchEventStatus(status) {
   renderEventList();
 }
 
+
+const UMA_PRESETS = {
+  "10-30": {
+    yonma: [50, 10, -10, -30],
+    sanma: [40, 0, -40],
+  },
+  "10-20": {
+    yonma: [40, 10, -10, -20],
+    sanma: [30, 0, -30],
+  },
+  "5-10": {
+    yonma: [25, 5, -5, -10],
+    sanma: [20, 0, -20],
+  },
+  none: {
+    yonma: [0, 0, 0, 0],
+    sanma: [0, 0, 0],
+  },
+};
+
+function getSelectedRadioValue(name) {
+  const selected = document.querySelector(
+    `input[name="${name}"]:checked`,
+  );
+
+  return selected ? selected.value : "";
+}
+
+function formatSignedScore(score) {
+  return score > 0 ? `+${score}` : String(score);
+}
+
+function updateScorePreview() {
+  const gameType = getSelectedRadioValue("gameType") || "yonma";
+  const preset = umaPresetSelect.value || "10-30";
+  const scores = UMA_PRESETS[preset][gameType];
+
+  rankScore1.textContent = formatSignedScore(scores[0]);
+  rankScore2.textContent = formatSignedScore(scores[1]);
+  rankScore3.textContent = formatSignedScore(scores[2]);
+
+  if (gameType === "sanma") {
+    rankScore4Wrap.hidden = true;
+  } else {
+    rankScore4Wrap.hidden = false;
+    rankScore4.textContent = formatSignedScore(scores[3]);
+  }
+}
+
+function validateEventForm() {
+  eventNameError.textContent = "";
+  eventNameInput.classList.remove("input-error");
+  eventCreateMessage.textContent = "";
+  eventCreateMessage.className = "form-message";
+
+  const name = eventNameInput.value.trim();
+
+  if (!name) {
+    eventNameError.textContent = "イベント名を入力してください。";
+    eventNameInput.classList.add("input-error");
+    return false;
+  }
+
+  if (name.length > 40) {
+    eventNameError.textContent =
+      "イベント名は40文字以内で入力してください。";
+    eventNameInput.classList.add("input-error");
+    return false;
+  }
+
+  return true;
+}
+
+function saveLocalEvent(event) {
+  const events = getLocalEvents();
+  events.push(event);
+
+  localStorage.setItem(
+    LOCAL_EVENTS_STORAGE_KEY,
+    JSON.stringify(events),
+  );
+}
+
+async function handleEventCreateSubmit(event) {
+  event.preventDefault();
+
+  if (!validateEventForm()) {
+    return;
+  }
+
+  eventSaveButton.disabled = true;
+  eventSaveButton.textContent = "作成中...";
+
+  try {
+    const now = new Date().toISOString();
+
+    const newEvent = {
+      eventId: `local-event-${Date.now()}`,
+      ownerUserId: currentUser.userId,
+      name: eventNameInput.value.trim(),
+      eventType: getSelectedRadioValue("eventType"),
+      gameType: getSelectedRadioValue("gameType"),
+      umaPreset: umaPresetSelect.value,
+      status: "active",
+      matchCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    saveLocalEvent(newEvent);
+
+    currentEventStatus = "active";
+    switchEventStatus("active");
+    showEventListScreen();
+  } catch (error) {
+    console.error(error);
+
+    eventCreateMessage.textContent =
+      "イベントの作成中にエラーが発生しました。";
+    eventCreateMessage.className =
+      "form-message is-error";
+  } finally {
+    eventSaveButton.disabled = false;
+    eventSaveButton.textContent = "イベントを作成";
+  }
+}
+
 /**
  * ログイン処理です。
  */
@@ -707,18 +857,27 @@ function handleLogout() {
 /**
  * 次工程で実装するイベント作成画面への仮導線です。
  */
-function handleCreateEvent() {
-  showHomeMessage(
-    "イベント作成画面は次のSTEPで実装します。",
-  );
-
-  if (!homeScreen.hidden) {
+function showEventCreateScreen() {
+  if (!currentUser) {
+    showLoginScreen();
     return;
   }
 
-  window.alert(
-    "イベント作成画面は次のSTEPで実装します。",
-  );
+  hideAllScreens();
+  eventCreateScreen.hidden = false;
+
+  eventCreateForm.reset();
+  eventNameError.textContent = "";
+  eventNameInput.classList.remove("input-error");
+  eventCreateMessage.textContent = "";
+  eventCreateMessage.className = "form-message";
+
+  updateScorePreview();
+  window.setTimeout(() => eventNameInput.focus(), 0);
+}
+
+function handleCreateEvent() {
+  showEventCreateScreen();
 }
 
 /**
@@ -781,5 +940,30 @@ nicknameInput.addEventListener("input", () => {
 });
 
 pinInput.addEventListener("input", handlePinInput);
+
+
+eventCreateBackButton.addEventListener("click", () => {
+  showEventListScreen();
+});
+
+eventCreateForm.addEventListener(
+  "submit",
+  handleEventCreateSubmit,
+);
+
+eventNameInput.addEventListener("input", () => {
+  eventNameError.textContent = "";
+  eventNameInput.classList.remove("input-error");
+  eventCreateMessage.textContent = "";
+  eventCreateMessage.className = "form-message";
+});
+
+umaPresetSelect.addEventListener("change", updateScorePreview);
+
+document
+  .querySelectorAll('input[name="gameType"]')
+  .forEach((radio) => {
+    radio.addEventListener("change", updateScorePreview);
+  });
 
 initializeApp();

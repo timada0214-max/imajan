@@ -238,6 +238,167 @@
           </section>
         </div>
       </section>
+
+      <section id="event-create-screen" class="page-screen" hidden>
+        <header class="page-header">
+          <button
+            id="event-create-back-button"
+            class="icon-button"
+            type="button"
+            aria-label="イベント一覧へ戻る"
+          >
+            ‹
+          </button>
+
+          <div class="page-heading">
+            <h1>イベント作成</h1>
+            <p>対戦の基本設定を登録</p>
+          </div>
+
+          <span class="header-spacer" aria-hidden="true"></span>
+        </header>
+
+        <div class="page-content">
+          <form id="event-create-form" class="event-form" novalidate>
+            <section class="form-section">
+              <div class="section-heading">
+                <h2>基本情報</h2>
+                <p>イベント名と開催形式を設定します。</p>
+              </div>
+
+              <div class="form-group">
+                <label for="event-name">イベント名</label>
+                <input
+                  id="event-name"
+                  name="eventName"
+                  type="text"
+                  placeholder="例：第1回 IMAJANリーグ"
+                  maxlength="40"
+                />
+                <p id="event-name-error" class="field-error"></p>
+              </div>
+
+              <fieldset class="choice-fieldset">
+                <legend>イベント形式</legend>
+
+                <div class="choice-grid">
+                  <label class="choice-card">
+                    <input
+                      type="radio"
+                      name="eventType"
+                      value="league"
+                      checked
+                    />
+                    <span class="choice-card-content">
+                      <strong>リーグ戦</strong>
+                      <small>複数日にわたって成績を管理</small>
+                    </span>
+                  </label>
+
+                  <label class="choice-card">
+                    <input
+                      type="radio"
+                      name="eventType"
+                      value="single"
+                    />
+                    <span class="choice-card-content">
+                      <strong>当日対戦</strong>
+                      <small>その日限りの対戦を記録</small>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset class="choice-fieldset">
+                <legend>麻雀形式</legend>
+
+                <div class="choice-grid">
+                  <label class="choice-card">
+                    <input
+                      type="radio"
+                      name="gameType"
+                      value="yonma"
+                      checked
+                    />
+                    <span class="choice-card-content">
+                      <strong>四麻</strong>
+                      <small>4人麻雀</small>
+                    </span>
+                  </label>
+
+                  <label class="choice-card">
+                    <input
+                      type="radio"
+                      name="gameType"
+                      value="sanma"
+                    />
+                    <span class="choice-card-content">
+                      <strong>三麻</strong>
+                      <small>3人麻雀</small>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+            </section>
+
+            <section class="form-section">
+              <div class="section-heading">
+                <h2>ウマ・オカ設定</h2>
+                <p>まずはプリセットから選択できます。</p>
+              </div>
+
+              <div class="form-group">
+                <label for="uma-preset">プリセット</label>
+                <select id="uma-preset" name="umaPreset">
+                  <option value="10-30">10-30</option>
+                  <option value="10-20">10-20</option>
+                  <option value="5-10">5-10</option>
+                  <option value="none">なし</option>
+                </select>
+              </div>
+
+              <div class="score-preview">
+                <p class="score-preview-label">現在の順位点</p>
+
+                <div id="score-preview-grid" class="score-preview-grid">
+                  <div>
+                    <span>1位</span>
+                    <strong id="rank-score-1">+50</strong>
+                  </div>
+                  <div>
+                    <span>2位</span>
+                    <strong id="rank-score-2">+10</strong>
+                  </div>
+                  <div>
+                    <span>3位</span>
+                    <strong id="rank-score-3">-10</strong>
+                  </div>
+                  <div id="rank-score-4-wrap">
+                    <span>4位</span>
+                    <strong id="rank-score-4">-30</strong>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <p
+              id="event-create-message"
+              class="form-message"
+              role="status"
+              aria-live="polite"
+            ></p>
+
+            <button
+              id="event-save-button"
+              class="primary-button"
+              type="submit"
+            >
+              イベントを作成
+            </button>
+          </form>
+        </div>
+      </section>
+
     </main>
 
     <script src="./script.js"></script>

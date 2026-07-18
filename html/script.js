@@ -2465,14 +2465,24 @@ function renderAdjustmentEntryRows(existingEntries = []) {
 
     row.innerHTML = `
       <span class="adjustment-entry-player"></span>
-      <input
-        class="adjustment-point-input"
-        type="number"
-        inputmode="decimal"
-        step="0.1"
-        value="0"
-        aria-label="${player.name}のポイント増減"
-      />
+      <div class="adjustment-point-control">
+        <button
+          class="adjustment-sign-button"
+          type="button"
+          aria-label="${player.name}のプラス・マイナスを切り替え"
+          aria-pressed="false"
+        >＋</button>
+        <input
+          class="adjustment-point-input"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          step="0.1"
+          value=""
+          placeholder="0"
+          aria-label="${player.name}のポイント増減"
+        />
+      </div>
     `;
 
     row.querySelector(".adjustment-entry-player").textContent =
@@ -2481,7 +2491,34 @@ function renderAdjustmentEntryRows(existingEntries = []) {
     const input = row.querySelector(
       ".adjustment-point-input",
     );
-    input.value = String(existingMap.get(player.playerId) || 0);
+    const signButton = row.querySelector(
+      ".adjustment-sign-button",
+    );
+    const existingValue = existingMap.has(player.playerId)
+      ? Number(existingMap.get(player.playerId))
+      : null;
+
+    if (existingValue !== null && existingValue !== 0) {
+      input.value = String(Math.abs(existingValue));
+    }
+
+    const setNegative = (isNegative) => {
+      row.dataset.negative = isNegative ? "true" : "false";
+      signButton.textContent = isNegative ? "−" : "＋";
+      signButton.classList.toggle("is-negative", isNegative);
+      signButton.setAttribute(
+        "aria-pressed",
+        isNegative ? "true" : "false",
+      );
+    };
+
+    setNegative(existingValue !== null && existingValue < 0);
+
+    signButton.addEventListener("click", () => {
+      setNegative(row.dataset.negative !== "true");
+      updateAdjustmentTotal();
+      input.focus();
+    });
     input.addEventListener("input", updateAdjustmentTotal);
 
     adjustmentEntryList.appendChild(row);
@@ -2505,11 +2542,20 @@ function readAdjustmentEntries() {
     );
     const valueText = input.value.trim();
 
+    const absolutePoints =
+      valueText === "" ? null : Math.abs(Number(valueText));
+    const isNegative = row.dataset.negative === "true";
+
     return {
       playerId,
       playerName: player ? player.name : "",
       valueText,
-      points: valueText === "" ? null : Number(valueText),
+      points:
+        absolutePoints === null
+          ? null
+          : isNegative
+            ? -absolutePoints
+            : absolutePoints,
     };
   });
 }

@@ -2610,3 +2610,43 @@ select:focus {
     animation-duration: 1.6s;
   }
 }
+
+/* STEP9-6B：iPhone向けポイント増減入力 */
+.adjustment-point-control {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.adjustment-sign-button {
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+
+  color: var(--color-primary-dark);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+
+  background: #e7f8ec;
+  border: 1px solid #b7dfc2;
+  border-radius: 12px;
+}
+
+.adjustment-sign-button.is-negative {
+  color: #b42318;
+  background: #fff1f0;
+  border-color: #f3b7b2;
+}
+
+.adjustment-sign-button:active {
+  transform: scale(0.97);
+}
+
+@media (max-width: 420px) {
+  .adjustment-entry-row {
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 172px);
+  }
+}

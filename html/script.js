@@ -207,8 +207,14 @@ const matchResultPreview = document.getElementById(
 const matchCreateMessage = document.getElementById(
   "match-create-message",
 );
-const matchSaveButton = document.getElementById(
-  "match-save-button",
+const matchSaveBackButton = document.getElementById(
+  "match-save-back-button",
+);
+const matchSaveNextButton = document.getElementById(
+  "match-save-next-button",
+);
+const matchFormActions = matchSaveNextButton.closest(
+  ".match-form-actions",
 );
 const matchFormTitle = document.getElementById(
   "match-form-title",
@@ -1705,6 +1711,50 @@ function focusFirstMatchPointInput() {
   }
 }
 
+function getNextMatchNumber() {
+  if (!currentEvent) {
+    return 1;
+  }
+
+  const matchCount = getLocalMatches().filter(
+    (match) => match.eventId === currentEvent.eventId,
+  ).length;
+
+  return matchCount + 1;
+}
+
+function setMatchSaveButtonsDisabled(disabled) {
+  matchSaveBackButton.disabled = disabled;
+  matchSaveNextButton.disabled = disabled;
+  matchDeleteButton.disabled = disabled;
+}
+
+function restoreMatchSaveButtonLabels(isEditing) {
+  matchSaveBackButton.textContent = "保存して戻る";
+  matchSaveNextButton.textContent = isEditing
+    ? "変更を保存"
+    : "保存して次の半荘へ";
+}
+
+function showContinuousMatchSavedMessage(savedMatchNumber) {
+  matchCreateMessage.textContent =
+    `✓ 第${savedMatchNumber}半荘を保存しました`;
+  matchCreateMessage.className =
+    "form-message match-create-success";
+
+  window.setTimeout(() => {
+    if (
+      !matchCreateScreen.hidden &&
+      !currentEditingMatch &&
+      matchCreateMessage.textContent ===
+        `✓ 第${savedMatchNumber}半荘を保存しました`
+    ) {
+      matchCreateMessage.textContent = "";
+      matchCreateMessage.className = "form-message";
+    }
+  }, 900);
+}
+
 function prepareMatchForm({ match = null } = {}) {
   if (!currentEvent) {
     showEventListScreen();
@@ -1733,11 +1783,13 @@ function prepareMatchForm({ match = null } = {}) {
   matchPreviewSection.hidden = true;
 
   matchFormTitle.textContent = match
-    ? "半荘結果編集"
-    : "半荘結果登録";
-  matchSaveButton.textContent = match
-    ? "変更を保存"
-    : "半荘結果を保存";
+    ? "半荘結果を編集"
+    : `第${getNextMatchNumber()}半荘を登録`;
+  matchFormActions.classList.toggle(
+    "is-editing",
+    Boolean(match),
+  );
+  restoreMatchSaveButtonLabels(Boolean(match));
   matchDeleteButton.hidden = !match;
 
   matchCreateCaption.textContent =
@@ -1932,7 +1984,7 @@ function renderMatchEntryRows(
         nextInput.focus();
         nextInput.select();
       } else {
-        matchSaveButton.focus();
+        matchSaveNextButton.focus();
       }
     });
 
@@ -2271,15 +2323,26 @@ function handleMatchCreateSubmit(event) {
   }
 
   const isEditing = Boolean(currentEditingMatch);
+  const requestedAction =
+    event.submitter?.dataset.saveAction || "back";
+  const shouldContinue =
+    !isEditing && requestedAction === "next";
 
-  matchSaveButton.disabled = true;
-  matchDeleteButton.disabled = true;
-  matchSaveButton.textContent = "保存中...";
+  setMatchSaveButtonsDisabled(true);
+
+  if (isEditing) {
+    matchSaveNextButton.textContent = "保存中...";
+  } else if (shouldContinue) {
+    matchSaveNextButton.textContent = "保存中...";
+  } else {
+    matchSaveBackButton.textContent = "保存中...";
+  }
 
   try {
     const results = calculateMatchResults(entries);
     const matches = getLocalMatches();
     const now = new Date().toISOString();
+    let savedMatchNumber = null;
 
     if (currentEditingMatch) {
       const targetIndex = matches.findIndex(
@@ -2302,6 +2365,11 @@ function handleMatchCreateSubmit(event) {
         updatedAt: now,
       };
     } else {
+      savedMatchNumber =
+        matches.filter(
+          (match) => match.eventId === currentEvent.eventId,
+        ).length + 1;
+
       matches.push({
         matchId: `local-match-${Date.now()}`,
         eventId: currentEvent.eventId,
@@ -2320,7 +2388,13 @@ function handleMatchCreateSubmit(event) {
     updatePlayersFromMatch();
     syncEventMatchCount();
     currentEditingMatch = null;
-    showEventDetailScreen();
+
+    if (shouldContinue) {
+      prepareMatchForm();
+      showContinuousMatchSavedMessage(savedMatchNumber);
+    } else {
+      showEventDetailScreen();
+    }
   } catch (error) {
     console.error(error);
 
@@ -2331,11 +2405,8 @@ function handleMatchCreateSubmit(event) {
     matchCreateMessage.className =
       "form-message is-error";
   } finally {
-    matchSaveButton.disabled = false;
-    matchDeleteButton.disabled = false;
-    matchSaveButton.textContent = isEditing
-      ? "変更を保存"
-      : "半荘結果を保存";
+    setMatchSaveButtonsDisabled(false);
+    restoreMatchSaveButtonLabels(isEditing);
   }
 }
 
@@ -2352,8 +2423,7 @@ function handleMatchDelete() {
     return;
   }
 
-  matchSaveButton.disabled = true;
-  matchDeleteButton.disabled = true;
+  setMatchSaveButtonsDisabled(true);
   matchDeleteButton.textContent = "削除中...";
 
   try {
@@ -2375,8 +2445,8 @@ function handleMatchDelete() {
     matchCreateMessage.className =
       "form-message is-error";
   } finally {
-    matchSaveButton.disabled = false;
-    matchDeleteButton.disabled = false;
+    setMatchSaveButtonsDisabled(false);
+    restoreMatchSaveButtonLabels(false);
     matchDeleteButton.textContent = "この半荘を削除";
   }
 }

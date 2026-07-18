@@ -1971,3 +1971,38 @@ select:focus {
   color: var(--color-primary);
   font-weight: 800;
 }
+
+
+/* STEP7-7：連続半荘登録 */
+.match-form-actions .secondary-button,
+.match-form-actions .primary-button {
+  width: 100%;
+}
+
+.match-form-actions .secondary-button {
+  min-height: 50px;
+}
+
+.match-form-actions .primary-button {
+  min-height: 52px;
+}
+
+.match-form-actions.is-editing #match-save-back-button {
+  display: none;
+}
+
+.match-form-actions.is-editing #match-save-next-button {
+  grid-row: auto;
+}
+
+.match-create-success {
+  color: var(--color-primary-dark);
+  background: #edf8f0;
+  border: 1px solid #b9d8c1;
+  border-radius: var(--radius-small);
+
+  padding: 10px 12px;
+
+  font-weight: 700;
+  text-align: center;
+}

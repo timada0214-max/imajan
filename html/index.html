@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <base target="_top">
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>IMAJAN</title>
+
+  <?!= include('style'); ?>
+</head>
+
+<body>
+
+  <!-- ==========================
+       起動画面
+  =========================== -->
+  <section id="loading-screen">
+
+    <div class="logo">
+      🀄
+    </div>
+
+    <h1>IMAJAN</h1>
+
+    <p>
+      麻雀の対局を、もっと簡単に。
+    </p>
+
+  </section>
+
+
+  <!-- ==========================
+       ログイン画面
+  =========================== -->
+  <section id="login-screen" hidden>
+
+    <div class="card">
+
+      <h2>ログイン</h2>
+
+      <div class="form-group">
+
+        <label>
+          ニックネーム
+        </label>
+
+        <input
+          id="nickname"
+          type="text"
+          maxlength="30"
+          placeholder="ニックネーム">
+
+      </div>
+
+
+      <div class="form-group">
+
+        <label>
+          PIN
+        </label>
+
+        <input
+          id="pin"
+          type="password"
+          maxlength="4"
+          placeholder="4桁">
+
+      </div>
+
+
+      <button id="login-button">
+
+        ログイン
+
+      </button>
+
+    </div>
+
+  </section>
+
+
+  <!-- ==========================
+       イベント一覧
+  =========================== -->
+  <section id="event-screen" hidden>
+
+    <header>
+
+      <h2>
+
+        イベント一覧
+
+      </h2>
+
+    </header>
+
+
+    <main>
+
+      <button id="create-event-button">
+
+        ＋ 新しいイベント
+
+      </button>
+
+
+      <div id="event-list">
+
+      </div>
+
+    </main>
+
+  </section>
+
+
+  <!-- ==========================
+       Toast
+  =========================== -->
+
+  <div id="toast" hidden>
+
+  </div>
+
+
+  <?!= include('script'); ?>
+
+</body>
+
+</html>

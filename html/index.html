@@ -399,6 +399,144 @@
         </div>
       </section>
 
+
+      <section id="event-detail-screen" class="page-screen" hidden>
+        <header class="page-header">
+          <button
+            id="event-detail-back-button"
+            class="icon-button"
+            type="button"
+            aria-label="イベント一覧へ戻る"
+          >
+            ‹
+          </button>
+
+          <div class="page-heading">
+            <h1 id="event-detail-title">イベント詳細</h1>
+            <p id="event-detail-caption">イベント情報</p>
+          </div>
+
+          <span class="header-spacer" aria-hidden="true"></span>
+        </header>
+
+        <div class="page-content">
+          <section class="event-summary-card">
+            <div>
+              <p class="event-summary-label">イベント</p>
+              <h2 id="event-summary-name">イベント名</h2>
+            </div>
+
+            <div class="event-summary-tags">
+              <span id="event-summary-type" class="summary-tag">リーグ戦</span>
+              <span id="event-summary-game" class="summary-tag">四麻</span>
+              <span id="event-summary-uma" class="summary-tag">10-30</span>
+            </div>
+          </section>
+
+          <section class="detail-section">
+            <div class="detail-section-header">
+              <div>
+                <h2>参加プレイヤー</h2>
+                <p id="player-count-text">0人登録</p>
+              </div>
+
+              <button
+                id="open-player-add-button"
+                class="header-action-button"
+                type="button"
+              >
+                プレイヤー追加
+              </button>
+            </div>
+
+            <div id="player-ranking-list" class="player-ranking-list"></div>
+
+            <section id="player-empty-state" class="mini-empty-state">
+              <p>まだプレイヤーが登録されていません。</p>
+            </section>
+          </section>
+
+          <section class="detail-section">
+            <div class="detail-section-header">
+              <div>
+                <h2>半荘結果</h2>
+                <p id="match-count-text">0半荘</p>
+              </div>
+
+              <button
+                id="open-match-create-button"
+                class="header-action-button"
+                type="button"
+              >
+                半荘を登録
+              </button>
+            </div>
+
+            <section class="mini-empty-state">
+              <p>まだ半荘結果はありません。</p>
+            </section>
+          </section>
+        </div>
+      </section>
+
+      <section id="player-add-screen" class="page-screen" hidden>
+        <header class="page-header">
+          <button
+            id="player-add-back-button"
+            class="icon-button"
+            type="button"
+            aria-label="イベント詳細へ戻る"
+          >
+            ‹
+          </button>
+
+          <div class="page-heading">
+            <h1>プレイヤー追加</h1>
+            <p>参加者をイベントへ登録</p>
+          </div>
+
+          <span class="header-spacer" aria-hidden="true"></span>
+        </header>
+
+        <div class="page-content">
+          <form id="player-add-form" class="event-form" novalidate>
+            <section class="form-section">
+              <div class="section-heading">
+                <h2>プレイヤー情報</h2>
+                <p>対局時に表示する名前を入力してください。</p>
+              </div>
+
+              <div class="form-group">
+                <label for="player-name">プレイヤー名</label>
+                <input
+                  id="player-name"
+                  name="playerName"
+                  type="text"
+                  placeholder="例：たなか"
+                  maxlength="20"
+                />
+                <p id="player-name-error" class="field-error"></p>
+              </div>
+            </section>
+
+            <p
+              id="player-add-message"
+              class="form-message"
+              role="status"
+              aria-live="polite"
+            ></p>
+
+            <button
+              id="player-save-button"
+              class="primary-button"
+              type="submit"
+            >
+              プレイヤーを追加
+            </button>
+          </form>
+        </div>
+      </section>
+
     </main>
 
     <script src="./script.js"></script>

@@ -3,11 +3,14 @@
 const SESSION_STORAGE_KEY = "imajan.session";
 const LOCAL_USERS_STORAGE_KEY = "imajan.localUsers";
 const LOCAL_EVENTS_STORAGE_KEY = "imajan.localEvents";
+const LOCAL_PLAYERS_STORAGE_KEY = "imajan.localPlayers";
 
 const loginScreen = document.getElementById("login-screen");
 const homeScreen = document.getElementById("home-screen");
 const eventListScreen = document.getElementById("event-list-screen");
 const eventCreateScreen = document.getElementById("event-create-screen");
+const eventDetailScreen = document.getElementById("event-detail-screen");
+const playerAddScreen = document.getElementById("player-add-screen");
 
 const loginForm = document.getElementById("login-form");
 const nicknameInput = document.getElementById("nickname");
@@ -74,9 +77,66 @@ const rankScore4Wrap = document.getElementById(
   "rank-score-4-wrap",
 );
 
+const eventDetailBackButton = document.getElementById(
+  "event-detail-back-button",
+);
+const eventDetailTitle = document.getElementById(
+  "event-detail-title",
+);
+const eventDetailCaption = document.getElementById(
+  "event-detail-caption",
+);
+const eventSummaryName = document.getElementById(
+  "event-summary-name",
+);
+const eventSummaryType = document.getElementById(
+  "event-summary-type",
+);
+const eventSummaryGame = document.getElementById(
+  "event-summary-game",
+);
+const eventSummaryUma = document.getElementById(
+  "event-summary-uma",
+);
+const playerCountText = document.getElementById(
+  "player-count-text",
+);
+const matchCountText = document.getElementById(
+  "match-count-text",
+);
+const playerRankingList = document.getElementById(
+  "player-ranking-list",
+);
+const playerEmptyState = document.getElementById(
+  "player-empty-state",
+);
+const openPlayerAddButton = document.getElementById(
+  "open-player-add-button",
+);
+const openMatchCreateButton = document.getElementById(
+  "open-match-create-button",
+);
+
+const playerAddBackButton = document.getElementById(
+  "player-add-back-button",
+);
+const playerAddForm = document.getElementById("player-add-form");
+const playerNameInput = document.getElementById("player-name");
+const playerNameError = document.getElementById(
+  "player-name-error",
+);
+const playerAddMessage = document.getElementById(
+  "player-add-message",
+);
+const playerSaveButton = document.getElementById(
+  "player-save-button",
+);
+
+
 
 let currentUser = null;
 let currentEventStatus = "active";
+let currentEvent = null;
 
 /**
  * 現在の画面がGAS HTML Service上で動いているかを判定します。
@@ -229,6 +289,8 @@ function hideAllScreens() {
   homeScreen.hidden = true;
   eventListScreen.hidden = true;
   eventCreateScreen.hidden = true;
+  eventDetailScreen.hidden = true;
+  playerAddScreen.hidden = true;
 }
 
 /**
@@ -366,6 +428,34 @@ function getLocalEvents() {
     console.warn("ローカルイベントの読み込みに失敗しました。", error);
     return [];
   }
+}
+
+
+function getLocalPlayers() {
+  const savedPlayers = localStorage.getItem(
+    LOCAL_PLAYERS_STORAGE_KEY,
+  );
+
+  if (!savedPlayers) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(savedPlayers);
+  } catch (error) {
+    console.warn(
+      "ローカルプレイヤーの読み込みに失敗しました。",
+      error,
+    );
+    return [];
+  }
+}
+
+function saveLocalPlayers(players) {
+  localStorage.setItem(
+    LOCAL_PLAYERS_STORAGE_KEY,
+    JSON.stringify(players),
+  );
 }
 
 /**
@@ -515,9 +605,7 @@ function createEventCard(event) {
     event.name || "名称未設定のイベント";
 
   button.addEventListener("click", () => {
-    window.alert(
-      "イベント詳細画面は、イベント作成画面の後に実装します。",
-    );
+    showEventDetailScreen(event);
   });
 
   return button;
@@ -614,6 +702,187 @@ function switchEventStatus(status) {
   renderEventList();
 }
 
+
+
+function showEventDetailScreen(event = currentEvent) {
+  if (!event) {
+    showEventListScreen();
+    return;
+  }
+
+  currentEvent = event;
+
+  hideAllScreens();
+  eventDetailScreen.hidden = false;
+
+  renderEventDetail();
+}
+
+function renderEventDetail() {
+  if (!currentEvent) {
+    return;
+  }
+
+  const players = getLocalPlayers()
+    .filter((player) => player.eventId === currentEvent.eventId)
+    .sort((a, b) => {
+      if ((b.totalScore || 0) !== (a.totalScore || 0)) {
+        return (b.totalScore || 0) - (a.totalScore || 0);
+      }
+
+      return new Date(a.createdAt).getTime() -
+        new Date(b.createdAt).getTime();
+    });
+
+  const eventTypeText =
+    currentEvent.eventType === "single"
+      ? "当日対戦"
+      : "リーグ戦";
+
+  const gameTypeText =
+    currentEvent.gameType === "sanma" ? "三麻" : "四麻";
+
+  eventDetailTitle.textContent = currentEvent.name;
+  eventDetailCaption.textContent =
+    currentEvent.status === "completed" ? "終了" : "開催中";
+
+  eventSummaryName.textContent = currentEvent.name;
+  eventSummaryType.textContent = eventTypeText;
+  eventSummaryGame.textContent = gameTypeText;
+  eventSummaryUma.textContent =
+    currentEvent.umaPreset === "none"
+      ? "ウマ・オカなし"
+      : currentEvent.umaPreset;
+
+  playerCountText.textContent = `${players.length}人登録`;
+  matchCountText.textContent =
+    `${currentEvent.matchCount || 0}半荘`;
+
+  playerRankingList.replaceChildren();
+
+  if (players.length === 0) {
+    playerEmptyState.hidden = false;
+    return;
+  }
+
+  playerEmptyState.hidden = true;
+
+  players.forEach((player, index) => {
+    const row = document.createElement("div");
+    row.className = "player-ranking-row";
+
+    row.innerHTML = `
+      <span class="player-rank">${index + 1}</span>
+      <span class="player-name"></span>
+      <span class="player-stats">
+        <span>${player.matchCount || 0}半荘</span>
+        <span class="player-score">${formatSignedScore(
+          player.totalScore || 0,
+        )}</span>
+      </span>
+    `;
+
+    row.querySelector(".player-name").textContent =
+      player.name;
+
+    playerRankingList.appendChild(row);
+  });
+}
+
+function showPlayerAddScreen() {
+  if (!currentEvent) {
+    showEventListScreen();
+    return;
+  }
+
+  hideAllScreens();
+  playerAddScreen.hidden = false;
+
+  playerAddForm.reset();
+  playerNameError.textContent = "";
+  playerNameInput.classList.remove("input-error");
+  playerAddMessage.textContent = "";
+  playerAddMessage.className = "form-message";
+
+  window.setTimeout(() => playerNameInput.focus(), 0);
+}
+
+function validatePlayerForm() {
+  playerNameError.textContent = "";
+  playerNameInput.classList.remove("input-error");
+  playerAddMessage.textContent = "";
+  playerAddMessage.className = "form-message";
+
+  const name = playerNameInput.value.trim();
+
+  if (!name) {
+    playerNameError.textContent =
+      "プレイヤー名を入力してください。";
+    playerNameInput.classList.add("input-error");
+    return false;
+  }
+
+  if (name.length > 20) {
+    playerNameError.textContent =
+      "プレイヤー名は20文字以内で入力してください。";
+    playerNameInput.classList.add("input-error");
+    return false;
+  }
+
+  const duplicatedPlayer = getLocalPlayers().find(
+    (player) =>
+      player.eventId === currentEvent.eventId &&
+      player.name === name,
+  );
+
+  if (duplicatedPlayer) {
+    playerNameError.textContent =
+      "同じ名前のプレイヤーが既に登録されています。";
+    playerNameInput.classList.add("input-error");
+    return false;
+  }
+
+  return true;
+}
+
+function handlePlayerAddSubmit(event) {
+  event.preventDefault();
+
+  if (!validatePlayerForm()) {
+    return;
+  }
+
+  playerSaveButton.disabled = true;
+  playerSaveButton.textContent = "追加中...";
+
+  try {
+    const players = getLocalPlayers();
+    const now = new Date().toISOString();
+
+    players.push({
+      playerId: `local-player-${Date.now()}`,
+      eventId: currentEvent.eventId,
+      name: playerNameInput.value.trim(),
+      matchCount: 0,
+      totalScore: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    saveLocalPlayers(players);
+    showEventDetailScreen();
+  } catch (error) {
+    console.error(error);
+
+    playerAddMessage.textContent =
+      "プレイヤーの追加中にエラーが発生しました。";
+    playerAddMessage.className =
+      "form-message is-error";
+  } finally {
+    playerSaveButton.disabled = false;
+    playerSaveButton.textContent = "プレイヤーを追加";
+  }
+}
 
 const UMA_PRESETS = {
   "10-30": {
@@ -965,5 +1234,37 @@ document
   .forEach((radio) => {
     radio.addEventListener("change", updateScorePreview);
   });
+
+
+eventDetailBackButton.addEventListener("click", () => {
+  showEventListScreen();
+});
+
+openPlayerAddButton.addEventListener(
+  "click",
+  showPlayerAddScreen,
+);
+
+openMatchCreateButton.addEventListener("click", () => {
+  window.alert(
+    "半荘登録画面は次のSTEPで実装します。",
+  );
+});
+
+playerAddBackButton.addEventListener("click", () => {
+  showEventDetailScreen();
+});
+
+playerAddForm.addEventListener(
+  "submit",
+  handlePlayerAddSubmit,
+);
+
+playerNameInput.addEventListener("input", () => {
+  playerNameError.textContent = "";
+  playerNameInput.classList.remove("input-error");
+  playerAddMessage.textContent = "";
+  playerAddMessage.className = "form-message";
+});
 
 initializeApp();

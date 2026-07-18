@@ -139,6 +139,18 @@ const playerAddBackButton = document.getElementById(
   "player-add-back-button",
 );
 const playerAddForm = document.getElementById("player-add-form");
+const registeredPlayerSection = document.getElementById(
+  "registered-player-section",
+);
+const registeredPlayerList = document.getElementById(
+  "registered-player-list",
+);
+const frequentPlayerSection = document.getElementById(
+  "frequent-player-section",
+);
+const frequentPlayerList = document.getElementById(
+  "frequent-player-list",
+);
 const playerNameInput = document.getElementById("player-name");
 const playerNameError = document.getElementById(
   "player-name-error",
@@ -2369,6 +2381,191 @@ function handleMatchDelete() {
   }
 }
 
+function normalizePlayerName(name) {
+  return name.trim().toLocaleLowerCase("ja-JP");
+}
+
+function getFrequentPlayerCandidates(limit = 12) {
+  if (!currentEvent) {
+    return [];
+  }
+
+  const currentEventNames = new Set(
+    getLocalPlayers()
+      .filter(
+        (player) =>
+          player.eventId === currentEvent.eventId,
+      )
+      .map((player) => normalizePlayerName(player.name)),
+  );
+
+  const candidateMap = new Map();
+
+  getLocalPlayers().forEach((player) => {
+    const normalizedName = normalizePlayerName(player.name);
+
+    if (
+      !normalizedName ||
+      currentEventNames.has(normalizedName)
+    ) {
+      return;
+    }
+
+    const existing = candidateMap.get(normalizedName);
+
+    if (existing) {
+      existing.useCount += 1;
+
+      if (
+        new Date(player.updatedAt || player.createdAt || 0) >
+        new Date(existing.lastUsedAt || 0)
+      ) {
+        existing.name = player.name;
+        existing.lastUsedAt =
+          player.updatedAt || player.createdAt || "";
+      }
+
+      return;
+    }
+
+    candidateMap.set(normalizedName, {
+      name: player.name,
+      normalizedName,
+      useCount: 1,
+      lastUsedAt:
+        player.updatedAt || player.createdAt || "",
+    });
+  });
+
+  return Array.from(candidateMap.values())
+    .sort((a, b) => {
+      if (b.useCount !== a.useCount) {
+        return b.useCount - a.useCount;
+      }
+
+      return (
+        new Date(b.lastUsedAt || 0).getTime() -
+        new Date(a.lastUsedAt || 0).getTime()
+      );
+    })
+    .slice(0, limit);
+}
+
+function createLocalPlayer(name) {
+  const players = getLocalPlayers();
+  const normalizedName = normalizePlayerName(name);
+  const duplicatedPlayer = players.find(
+    (player) =>
+      player.eventId === currentEvent.eventId &&
+      normalizePlayerName(player.name) === normalizedName,
+  );
+
+  if (duplicatedPlayer) {
+    throw new Error(
+      "同じ名前のプレイヤーが既に登録されています。",
+    );
+  }
+
+  const now = new Date().toISOString();
+
+  players.push({
+    playerId: `local-player-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`,
+    eventId: currentEvent.eventId,
+    name: name.trim(),
+    matchCount: 0,
+    rankCounts: [0, 0, 0, 0],
+    averageRank: 0,
+    totalScore: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  saveLocalPlayers(players);
+}
+
+function renderRegisteredPlayers() {
+  const players = getEventPlayers();
+
+  registeredPlayerList.replaceChildren();
+  registeredPlayerSection.hidden = players.length === 0;
+
+  players.forEach((player) => {
+    const chip = document.createElement("span");
+    chip.className = "registered-player-chip";
+    chip.textContent = player.name;
+    registeredPlayerList.appendChild(chip);
+  });
+}
+
+function renderFrequentPlayerCandidates() {
+  const candidates = getFrequentPlayerCandidates();
+
+  frequentPlayerList.replaceChildren();
+  frequentPlayerSection.hidden = candidates.length === 0;
+
+  candidates.forEach((candidate) => {
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.className = "frequent-player-button";
+    button.textContent = candidate.name;
+    button.setAttribute(
+      "aria-label",
+      `${candidate.name}をイベントへ追加`,
+    );
+
+    button.addEventListener("click", () => {
+      handleFrequentPlayerAdd(candidate.name, button);
+    });
+
+    frequentPlayerList.appendChild(button);
+  });
+}
+
+function handleFrequentPlayerAdd(name, button) {
+  if (!currentEvent || button.disabled) {
+    return;
+  }
+
+  button.disabled = true;
+  button.classList.add("is-adding");
+  button.textContent = "追加中...";
+
+  playerAddMessage.textContent = "";
+  playerAddMessage.className = "form-message";
+
+  try {
+    createLocalPlayer(name);
+
+    button.classList.remove("is-adding");
+    button.classList.add("is-added");
+    button.textContent = `✓ ${name}`;
+
+    playerAddMessage.textContent =
+      `${name}を追加しました。続けて別のプレイヤーも追加できます。`;
+    playerAddMessage.className =
+      "form-message is-success";
+
+    renderRegisteredPlayers();
+    renderFrequentPlayerCandidates();
+  } catch (error) {
+    console.error(error);
+
+    button.disabled = false;
+    button.classList.remove("is-adding");
+    button.textContent = name;
+
+    playerAddMessage.textContent =
+      error instanceof Error
+        ? error.message
+        : "プレイヤーの追加中にエラーが発生しました。";
+    playerAddMessage.className =
+      "form-message is-error";
+  }
+}
+
 function showPlayerAddScreen() {
   if (!currentEvent) {
     showEventListScreen();
@@ -2384,7 +2581,14 @@ function showPlayerAddScreen() {
   playerAddMessage.textContent = "";
   playerAddMessage.className = "form-message";
 
-  window.setTimeout(() => playerNameInput.focus(), 0);
+  renderRegisteredPlayers();
+  renderFrequentPlayerCandidates();
+
+  window.setTimeout(() => {
+    if (frequentPlayerSection.hidden) {
+      playerNameInput.focus();
+    }
+  }, 0);
 }
 
 function validatePlayerForm() {
@@ -2409,10 +2613,11 @@ function validatePlayerForm() {
     return false;
   }
 
+  const normalizedName = normalizePlayerName(name);
   const duplicatedPlayer = getLocalPlayers().find(
     (player) =>
       player.eventId === currentEvent.eventId &&
-      player.name === name,
+      normalizePlayerName(player.name) === normalizedName,
   );
 
   if (duplicatedPlayer) {
@@ -2436,22 +2641,7 @@ function handlePlayerAddSubmit(event) {
   playerSaveButton.textContent = "追加中...";
 
   try {
-    const players = getLocalPlayers();
-    const now = new Date().toISOString();
-
-    players.push({
-      playerId: `local-player-${Date.now()}`,
-      eventId: currentEvent.eventId,
-      name: playerNameInput.value.trim(),
-      matchCount: 0,
-      rankCounts: [0, 0, 0, 0],
-      averageRank: 0,
-      totalScore: 0,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    saveLocalPlayers(players);
+    createLocalPlayer(playerNameInput.value.trim());
     showEventDetailScreen();
   } catch (error) {
     console.error(error);

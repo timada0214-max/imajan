@@ -1883,3 +1883,91 @@ select:focus {
     gap: 8px;
   }
 }
+
+
+/* STEP7-6：よく使うプレイヤーのワンタップ登録 */
+.frequent-player-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.frequent-player-button {
+  min-height: 42px;
+  padding: 9px 14px;
+
+  color: var(--color-primary-dark);
+  background: #ffffff;
+  border: 1px solid #9fc9aa;
+  border-radius: 999px;
+
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+
+.frequent-player-button:hover {
+  background: #f0f8f2;
+}
+
+.frequent-player-button:active {
+  transform: translateY(1px);
+}
+
+.frequent-player-button:focus-visible {
+  outline: 3px solid rgba(20, 83, 45, 0.18);
+  outline-offset: 2px;
+}
+
+.frequent-player-button:disabled,
+.frequent-player-button.is-added {
+  color: var(--color-text-secondary);
+  background: #f2f4f2;
+  border-color: var(--color-border);
+
+  cursor: default;
+  opacity: 0.82;
+}
+
+.frequent-player-button.is-adding {
+  opacity: 0.65;
+}
+
+.player-quick-add-message {
+  margin: 10px 0 0;
+
+  color: var(--color-primary-dark);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+
+/* STEP7-6B：登録済みプレイヤー表示 */
+.registered-player-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.registered-player-chip {
+  min-height: 40px;
+  padding: 8px 13px;
+
+  color: var(--color-text);
+  background: #f2f5f2;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.registered-player-chip::before {
+  content: "✓";
+  margin-right: 6px;
+
+  color: var(--color-primary);
+  font-weight: 800;
+}

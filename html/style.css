@@ -1069,7 +1069,7 @@ select:focus {
   }
 
   .score-preview-grid {
-    gap: 5px;
+    gap: 6px;
   }
 
   .score-preview-grid div {
@@ -1422,7 +1422,7 @@ select:focus {
 
 .match-history-results {
   display: grid;
-  gap: 7px;
+  gap: 5px;
 }
 
 .match-history-result {
@@ -1478,7 +1478,7 @@ select:focus {
 }
 
 .standings-table.is-sanma {
-  min-width: 620px;
+  min-width: 650px;
 }
 
 .standings-row {
@@ -2103,4 +2103,139 @@ select:focus {
 
 .tie-break-move-button:disabled {
   opacity: 0.3;
+}
+
+
+/* STEP8-1：成績表UI改善 */
+.player-ranking-list {
+  position: relative;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+}
+
+.standings-table,
+.standings-table.is-sanma {
+  min-width: 620px;
+  gap: 6px;
+}
+
+.standings-table.is-sanma {
+  min-width: 600px;
+}
+
+.standings-row {
+  grid-template-columns:
+    112px
+    78px 68px 54px
+    42px 42px 42px 42px;
+  min-height: 50px;
+  padding: 9px 8px;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.standings-table.is-sanma .standings-row {
+  grid-template-columns:
+    112px
+    78px 68px 54px
+    42px 42px 42px;
+}
+
+.standings-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  min-height: 40px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  box-shadow: 0 2px 7px rgba(20, 83, 45, 0.06);
+}
+
+.standings-player-column,
+.standings-player-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+.standings-player-column {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding-left: 4px;
+  background: var(--color-primary-light);
+  text-align: left;
+}
+
+.standings-player-cell {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  align-self: stretch;
+  margin: -9px 0 -9px -8px;
+  padding: 9px 6px 9px 8px;
+  background: #f8faf9;
+  box-shadow: 5px 0 8px -9px rgba(20, 83, 45, 0.55);
+}
+
+.standings-rank {
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.standings-player {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standings-score {
+  font-size: 14px;
+  font-weight: 850;
+  text-align: right;
+}
+
+.standings-score.is-positive {
+  color: var(--color-primary-dark);
+}
+
+.standings-score.is-negative {
+  color: #b5473d;
+}
+
+.standings-score.is-zero {
+  color: var(--color-text-secondary);
+}
+
+.standings-average {
+  font-weight: 700;
+}
+
+@media (max-width: 420px) {
+  .standings-table,
+  .standings-table.is-sanma {
+    min-width: 620px;
+  }
+
+  .standings-table.is-sanma {
+    min-width: 570px;
+  }
+
+  .standings-row {
+    grid-template-columns:
+      110px 76px 66px 52px
+      40px 40px 40px 40px;
+  }
+
+  .standings-table.is-sanma .standings-row {
+    grid-template-columns:
+      110px 76px 66px 52px
+      40px 40px 40px;
+  }
 }

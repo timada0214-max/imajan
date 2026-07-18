@@ -945,7 +945,7 @@ function renderEventDetail() {
       : currentEvent.umaPreset;
 
   playerCountText.textContent =
-    `${players.length}人登録・合計スコア順`;
+    `${players.length}人登録・総合ポイント順（ポイント増減を含む）`;
 
   const matches = getLocalMatches()
     .filter((match) => match.eventId === currentEvent.eventId)
@@ -1081,6 +1081,20 @@ function formatAverageRank(player) {
   return Number(player.averageRank).toFixed(2);
 }
 
+function getStandingsScoreClass(score) {
+  const numericScore = Number(score) || 0;
+
+  if (numericScore > 0) {
+    return "is-positive";
+  }
+
+  if (numericScore < 0) {
+    return "is-negative";
+  }
+
+  return "is-zero";
+}
+
 function renderPlayerStandings(players) {
   playerRankingList.replaceChildren();
 
@@ -1100,15 +1114,14 @@ function renderPlayerStandings(players) {
   const header = document.createElement("div");
   header.className = "standings-row standings-header";
   header.innerHTML = `
-    <span>順位</span>
-    <span>プレイヤー</span>
-    <span>半荘</span>
+    <span class="standings-player-column">プレイヤー</span>
+    <span>総合Pt</span>
+    <span>平均順位</span>
+    <span>半荘数</span>
     <span>1位</span>
     <span>2位</span>
     <span>3位</span>
     ${isSanma ? "" : "<span>4位</span>"}
-    <span>平均順位</span>
-    <span>合計</span>
   `;
   table.appendChild(header);
 
@@ -1116,18 +1129,24 @@ function renderPlayerStandings(players) {
     const row = document.createElement("div");
     row.className = "standings-row";
 
+    const score = Number(player.totalScore) || 0;
+
     row.innerHTML = `
-      <span class="standings-rank">${index + 1}</span>
-      <span class="standings-player"></span>
+      <span class="standings-player-cell">
+        <span class="standings-rank">${index + 1}</span>
+        <span class="standings-player"></span>
+      </span>
+      <strong class="standings-score ${getStandingsScoreClass(
+        score,
+      )}">${formatSignedScore(score)}</strong>
+      <span class="standings-average">${formatAverageRank(
+        player,
+      )}</span>
       <span>${player.matchCount || 0}</span>
       <span>${player.rankCounts?.[0] || 0}</span>
       <span>${player.rankCounts?.[1] || 0}</span>
       <span>${player.rankCounts?.[2] || 0}</span>
       ${isSanma ? "" : `<span>${player.rankCounts?.[3] || 0}</span>`}
-      <span>${formatAverageRank(player)}</span>
-      <strong class="standings-score">${formatSignedScore(
-        player.totalScore || 0,
-      )}</strong>
     `;
 
     row.querySelector(".standings-player").textContent =

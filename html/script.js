@@ -198,6 +198,15 @@ const pointTotalDifference = document.getElementById(
 const matchEntryError = document.getElementById(
   "match-entry-error",
 );
+const tieBreakSection = document.getElementById(
+  "tie-break-section",
+);
+const tieBreakList = document.getElementById(
+  "tie-break-list",
+);
+const tieBreakError = document.getElementById(
+  "tie-break-error",
+);
 const matchPreviewSection = document.getElementById(
   "match-preview-section",
 );
@@ -264,6 +273,7 @@ let currentUser = null;
 let currentEventStatus = "active";
 let currentEvent = null;
 let currentEditingMatch = null;
+let tieBreakOrderByPoints = new Map();
 let currentEditingAdjustment = null;
 
 /**
@@ -1778,6 +1788,10 @@ function prepareMatchForm({ match = null } = {}) {
 
   matchCreateForm.reset();
   matchEntryError.textContent = "";
+  tieBreakError.textContent = "";
+  tieBreakList.replaceChildren();
+  tieBreakSection.hidden = true;
+  tieBreakOrderByPoints = new Map();
   matchCreateMessage.textContent = "";
   matchCreateMessage.className = "form-message";
   matchPreviewSection.hidden = true;
@@ -1824,6 +1838,26 @@ function prepareMatchForm({ match = null } = {}) {
     initialPlayerIds,
     match ? match.entryOrderPlayerIds : [],
   );
+
+  if (match) {
+    const resultsByPoints = new Map();
+
+    match.results
+      .slice()
+      .sort((a, b) => Number(a.rank) - Number(b.rank))
+      .forEach((result) => {
+        const key = String(result.points);
+        const playerIds = resultsByPoints.get(key) || [];
+        playerIds.push(result.playerId);
+        resultsByPoints.set(key, playerIds);
+      });
+
+    resultsByPoints.forEach((playerIds, key) => {
+      if (playerIds.length > 1) {
+        tieBreakOrderByPoints.set(key, playerIds);
+      }
+    });
+  }
 
   matchMemberRestoreMessage.hidden = true;
   matchMemberRestoreMessage.textContent = "";
@@ -2155,6 +2189,168 @@ function readMatchEntries() {
   });
 }
 
+function getTiedEntryGroups(entries) {
+  const groups = new Map();
+
+  entries.forEach((entry) => {
+    if (
+      !entry.playerId ||
+      entry.points === null ||
+      !Number.isFinite(entry.points)
+    ) {
+      return;
+    }
+
+    const key = String(entry.points);
+    const group = groups.get(key) || [];
+    group.push(entry);
+    groups.set(key, group);
+  });
+
+  return Array.from(groups.entries())
+    .filter(([, group]) => group.length > 1)
+    .sort((a, b) => Number(b[0]) - Number(a[0]));
+}
+
+function syncTieBreakOrders(entries) {
+  const tiedGroups = getTiedEntryGroups(entries);
+  const activeKeys = new Set(tiedGroups.map(([key]) => key));
+
+  Array.from(tieBreakOrderByPoints.keys()).forEach((key) => {
+    if (!activeKeys.has(key)) {
+      tieBreakOrderByPoints.delete(key);
+    }
+  });
+
+  tiedGroups.forEach(([key, group]) => {
+    const playerIds = group.map((entry) => entry.playerId);
+    const currentOrder = tieBreakOrderByPoints.get(key) || [];
+    const preserved = currentOrder.filter((playerId) =>
+      playerIds.includes(playerId),
+    );
+    const missing = playerIds.filter(
+      (playerId) => !preserved.includes(playerId),
+    );
+
+    tieBreakOrderByPoints.set(key, [...preserved, ...missing]);
+  });
+}
+
+function moveTieBreakPlayer(pointsKey, playerId, direction) {
+  const order = tieBreakOrderByPoints.get(pointsKey);
+
+  if (!order) {
+    return;
+  }
+
+  const currentIndex = order.indexOf(playerId);
+  const nextIndex = currentIndex + direction;
+
+  if (
+    currentIndex < 0 ||
+    nextIndex < 0 ||
+    nextIndex >= order.length
+  ) {
+    return;
+  }
+
+  [order[currentIndex], order[nextIndex]] = [
+    order[nextIndex],
+    order[currentIndex],
+  ];
+
+  tieBreakOrderByPoints.set(pointsKey, order);
+  updateMatchPreview();
+}
+
+function renderTieBreakControls(entries) {
+  syncTieBreakOrders(entries);
+  tieBreakList.replaceChildren();
+  tieBreakError.textContent = "";
+
+  const tiedGroups = getTiedEntryGroups(entries);
+
+  if (tiedGroups.length === 0) {
+    tieBreakSection.hidden = true;
+    return;
+  }
+
+  const players = getEventPlayers();
+  tieBreakSection.hidden = false;
+
+  tiedGroups.forEach(([pointsKey]) => {
+    const order = tieBreakOrderByPoints.get(pointsKey) || [];
+    const groupElement = document.createElement("div");
+    groupElement.className = "tie-break-group";
+
+    const heading = document.createElement("div");
+    heading.className = "tie-break-group-heading";
+    heading.innerHTML = `
+      <strong>${Number(pointsKey).toLocaleString("ja-JP")}点で同点</strong>
+      <span>上が上位</span>
+    `;
+    groupElement.appendChild(heading);
+
+    const guide = document.createElement("p");
+    guide.className = "tie-break-guide";
+    guide.textContent =
+      "矢印で並べ替えてください。起家に近いプレイヤーを上にします。";
+    groupElement.appendChild(guide);
+
+    const orderElement = document.createElement("div");
+    orderElement.className = "tie-break-order";
+
+    order.forEach((playerId, index) => {
+      const player = players.find(
+        (item) => item.playerId === playerId,
+      );
+      const row = document.createElement("div");
+      row.className = "tie-break-player";
+
+      row.innerHTML = `
+        <span class="tie-break-rank">${index + 1}</span>
+        <span class="tie-break-player-name"></span>
+        <span class="tie-break-controls">
+          <button
+            class="tie-break-move-button"
+            type="button"
+            data-direction="-1"
+            aria-label="上位へ移動"
+            ${index === 0 ? "disabled" : ""}
+          >↑</button>
+          <button
+            class="tie-break-move-button"
+            type="button"
+            data-direction="1"
+            aria-label="下位へ移動"
+            ${index === order.length - 1 ? "disabled" : ""}
+          >↓</button>
+        </span>
+      `;
+
+      row.querySelector(".tie-break-player-name").textContent =
+        player ? player.name : "不明なプレイヤー";
+
+      row.querySelectorAll(".tie-break-move-button").forEach(
+        (button) => {
+          button.addEventListener("click", () => {
+            moveTieBreakPlayer(
+              pointsKey,
+              playerId,
+              Number(button.dataset.direction),
+            );
+          });
+        },
+      );
+
+      orderElement.appendChild(row);
+    });
+
+    groupElement.appendChild(orderElement);
+    tieBreakList.appendChild(groupElement);
+  });
+}
+
 function calculateMatchResults(entries) {
   const players = getEventPlayers();
   const rule = getMatchRule();
@@ -2173,7 +2369,17 @@ function calculateMatchResults(entries) {
         points: entry.points,
       };
     })
-    .sort((a, b) => b.points - a.points)
+    .sort((a, b) => {
+      const pointDifference = b.points - a.points;
+
+      if (pointDifference !== 0) {
+        return pointDifference;
+      }
+
+      const order =
+        tieBreakOrderByPoints.get(String(a.points)) || [];
+      return order.indexOf(a.playerId) - order.indexOf(b.playerId);
+    })
     .map((result, index) => ({
       ...result,
       rank: index + 1,
@@ -2221,11 +2427,19 @@ function validateMatchEntries(entries) {
     );
   }
 
-  if (
-    new Set(entries.map((entry) => entry.points)).size !==
-    rule.playerCount
-  ) {
-    return "同点時の順位処理は未対応です。異なる持ち点を入力してください。";
+  const tiedGroups = getTiedEntryGroups(entries);
+
+  for (const [pointsKey, group] of tiedGroups) {
+    const playerIds = group.map((entry) => entry.playerId);
+    const order = tieBreakOrderByPoints.get(pointsKey) || [];
+
+    if (
+      order.length !== playerIds.length ||
+      new Set(order).size !== playerIds.length ||
+      order.some((playerId) => !playerIds.includes(playerId))
+    ) {
+      return "同点プレイヤーの順位を指定してください。";
+    }
   }
 
   return "";
@@ -2247,6 +2461,7 @@ function updateMatchPreview() {
   matchCreateMessage.textContent = "";
   matchCreateMessage.className = "form-message";
   matchResultPreview.replaceChildren();
+  renderTieBreakControls(entries);
 
   const errorMessage = validateMatchEntries(entries);
 
@@ -2361,6 +2576,9 @@ function handleMatchCreateSubmit(event) {
         entryOrderPlayerIds: entries.map(
           (entry) => entry.playerId,
         ),
+        tieBreakOrderPlayerIds: Array.from(
+          tieBreakOrderByPoints.values(),
+        ).flat(),
         results,
         updatedAt: now,
       };
@@ -2378,6 +2596,9 @@ function handleMatchCreateSubmit(event) {
         entryOrderPlayerIds: entries.map(
           (entry) => entry.playerId,
         ),
+        tieBreakOrderPlayerIds: Array.from(
+          tieBreakOrderByPoints.values(),
+        ).flat(),
         results,
         createdAt: now,
         updatedAt: now,

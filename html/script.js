@@ -317,6 +317,9 @@ let currentEvent = null;
 let cloudEvents = [];
 let eventLoadPromise = null;
 let loadedEventOwnerUserId = null;
+let cloudPlayers = [];
+let playerLoadPromise = null;
+let loadedPlayerOwnerUserId = null;
 let currentEditingMatch = null;
 let tieBreakOrderByPoints = new Map();
 let standingsMode = "all";
@@ -488,6 +491,9 @@ function showLoginScreen() {
   cloudEvents = [];
   loadedEventOwnerUserId = null;
   eventLoadPromise = null;
+  cloudPlayers = [];
+  loadedPlayerOwnerUserId = null;
+  playerLoadPromise = null;
 
   hideAllScreens();
   loginScreen.hidden = false;
@@ -814,7 +820,27 @@ function getLegacyLocalEvents() {
 }
 
 
+/**
+ * 現在ログイン中のユーザーについて、
+ * Playersシートから読み込んだプレイヤー一覧を返します。
+ */
 function getLocalPlayers() {
+  return cloudPlayers;
+}
+
+/**
+ * 画面内の集計値をキャッシュへ反映します。
+ * STEP9-4以降、プレイヤーの基本情報はlocalStorageへ保存しません。
+ */
+function saveLocalPlayers(players) {
+  cloudPlayers = Array.isArray(players) ? players : [];
+}
+
+/**
+ * STEP9-4以前にlocalStorageへ保存されていたプレイヤーを取得します。
+ * 初回移行専用です。
+ */
+function getLegacyLocalPlayers() {
   const savedPlayers = localStorage.getItem(
     LOCAL_PLAYERS_STORAGE_KEY,
   );
@@ -827,18 +853,11 @@ function getLocalPlayers() {
     return JSON.parse(savedPlayers);
   } catch (error) {
     console.warn(
-      "ローカルプレイヤーの読み込みに失敗しました。",
+      "旧ローカルプレイヤーの読み込みに失敗しました。",
       error,
     );
     return [];
   }
-}
-
-function saveLocalPlayers(players) {
-  localStorage.setItem(
-    LOCAL_PLAYERS_STORAGE_KEY,
-    JSON.stringify(players),
-  );
 }
 
 
@@ -1154,6 +1173,128 @@ async function loadEventsFromSheet({ force = false } = {}) {
   }
 }
 
+function getPlayerMigrationKey(userId) {
+  return `imajan.playersMigrated.${userId}`;
+}
+
+function normalizeCloudPlayer(player) {
+  return {
+    ...player,
+    sortOrder: Number(player.sortOrder || 0),
+    matchCount: 0,
+    rankCounts: [0, 0, 0, 0],
+    averageRank: 0,
+    totalScore: 0,
+  };
+}
+
+async function migrateLegacyPlayersToSheet() {
+  if (!currentUser) {
+    return;
+  }
+
+  const migrationKey = getPlayerMigrationKey(
+    currentUser.userId,
+  );
+
+  if (localStorage.getItem(migrationKey) === "done") {
+    return;
+  }
+
+  await loadEventsFromSheet();
+
+  const ownedEventIds = new Set(
+    cloudEvents.map((event) => event.eventId),
+  );
+  const legacyPlayers = getLegacyLocalPlayers().filter(
+    (player) => ownedEventIds.has(player.eventId),
+  );
+  const eventPlayerCounts = new Map();
+
+  for (const legacyPlayer of legacyPlayers) {
+    const currentCount =
+      eventPlayerCounts.get(legacyPlayer.eventId) || 0;
+
+    await callGasApi("createPlayer", {
+      ownerUserId: currentUser.userId,
+      eventId: legacyPlayer.eventId,
+      name: legacyPlayer.name,
+      preferredPlayerId: legacyPlayer.playerId,
+      sortOrder:
+        Number(legacyPlayer.sortOrder || 0) || currentCount + 1,
+      createdAt: legacyPlayer.createdAt,
+      updatedAt: legacyPlayer.updatedAt,
+    });
+
+    eventPlayerCounts.set(
+      legacyPlayer.eventId,
+      currentCount + 1,
+    );
+  }
+
+  localStorage.setItem(migrationKey, "done");
+}
+
+async function loadPlayersFromSheet({ force = false } = {}) {
+  if (!currentUser) {
+    cloudPlayers = [];
+    loadedPlayerOwnerUserId = null;
+    return [];
+  }
+
+  if (
+    !force &&
+    loadedPlayerOwnerUserId === currentUser.userId
+  ) {
+    return cloudPlayers;
+  }
+
+  if (playerLoadPromise) {
+    return playerLoadPromise;
+  }
+
+  playerLoadPromise = (async () => {
+    await migrateLegacyPlayersToSheet();
+
+    const players = await callGasApi("listPlayers", {
+      ownerUserId: currentUser.userId,
+    });
+
+    cloudPlayers = Array.isArray(players)
+      ? players.map(normalizeCloudPlayer)
+      : [];
+    loadedPlayerOwnerUserId = currentUser.userId;
+
+    return cloudPlayers;
+  })();
+
+  try {
+    return await playerLoadPromise;
+  } finally {
+    playerLoadPromise = null;
+  }
+}
+
+async function createPlayerOnSheet(name) {
+  if (!currentUser || !currentEvent) {
+    throw new Error("イベント情報を確認できませんでした。");
+  }
+
+  const eventPlayers = getLocalPlayers().filter(
+    (player) => player.eventId === currentEvent.eventId,
+  );
+  const player = await callGasApi("createPlayer", {
+    ownerUserId: currentUser.userId,
+    eventId: currentEvent.eventId,
+    name: name.trim(),
+    sortOrder: eventPlayers.length + 1,
+  });
+  const normalizedPlayer = normalizeCloudPlayer(player);
+
+  cloudPlayers.push(normalizedPlayer);
+  return normalizedPlayer;
+}
+
 function createEventCard(event) {
   const button = document.createElement("button");
   button.className = "event-card";
@@ -1285,7 +1426,7 @@ function switchEventStatus(status) {
 
 
 
-function showEventDetailScreen(event = currentEvent) {
+async function showEventDetailScreen(event = currentEvent) {
   if (!event) {
     showEventListScreen();
     return;
@@ -1304,7 +1445,14 @@ function showEventDetailScreen(event = currentEvent) {
   hideAllScreens();
   eventDetailScreen.hidden = false;
 
-  renderEventDetail();
+  try {
+    await loadPlayersFromSheet();
+    renderEventDetail();
+  } catch (error) {
+    console.error(error);
+    playerCountText.textContent =
+      error.message || "プレイヤーを読み込めませんでした。";
+  }
 }
 
 function getEventTimelineRecords(eventId = currentEvent?.eventId) {
@@ -3458,38 +3606,8 @@ function getFrequentPlayerCandidates(limit = 12) {
     .slice(0, limit);
 }
 
-function createLocalPlayer(name) {
-  const players = getLocalPlayers();
-  const normalizedName = normalizePlayerName(name);
-  const duplicatedPlayer = players.find(
-    (player) =>
-      player.eventId === currentEvent.eventId &&
-      normalizePlayerName(player.name) === normalizedName,
-  );
-
-  if (duplicatedPlayer) {
-    throw new Error(
-      "同じ名前のプレイヤーが既に登録されています。",
-    );
-  }
-
-  const now = new Date().toISOString();
-
-  players.push({
-    playerId: `local-player-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`,
-    eventId: currentEvent.eventId,
-    name: name.trim(),
-    matchCount: 0,
-    rankCounts: [0, 0, 0, 0],
-    averageRank: 0,
-    totalScore: 0,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  saveLocalPlayers(players);
+async function createLocalPlayer(name) {
+  return createPlayerOnSheet(name);
 }
 
 function renderRegisteredPlayers() {
@@ -3531,7 +3649,7 @@ function renderFrequentPlayerCandidates() {
   });
 }
 
-function handleFrequentPlayerAdd(name, button) {
+async function handleFrequentPlayerAdd(name, button) {
   if (!currentEvent || button.disabled) {
     return;
   }
@@ -3544,7 +3662,7 @@ function handleFrequentPlayerAdd(name, button) {
   playerAddMessage.className = "form-message";
 
   try {
-    createLocalPlayer(name);
+    await createLocalPlayer(name);
 
     button.classList.remove("is-adding");
     button.classList.add("is-added");
@@ -3637,7 +3755,7 @@ function validatePlayerForm() {
   return true;
 }
 
-function handlePlayerAddSubmit(event) {
+async function handlePlayerAddSubmit(event) {
   event.preventDefault();
 
   if (!validatePlayerForm()) {
@@ -3648,13 +3766,15 @@ function handlePlayerAddSubmit(event) {
   playerSaveButton.textContent = "追加中...";
 
   try {
-    createLocalPlayer(playerNameInput.value.trim());
-    showEventDetailScreen();
+    await createLocalPlayer(playerNameInput.value.trim());
+    await showEventDetailScreen();
   } catch (error) {
     console.error(error);
 
     playerAddMessage.textContent =
-      "プレイヤーの追加中にエラーが発生しました。";
+      error instanceof Error
+        ? error.message
+        : "プレイヤーの追加中にエラーが発生しました。";
     playerAddMessage.className =
       "form-message is-error";
   } finally {

@@ -429,6 +429,7 @@ function buildEventRuleFromPayload_(payload) {
     });
 
     return {
+      playerCount: playerCount,
       ruleMode: "manual",
       rulePreset: "custom",
       startingPoints: manualRule.startingPoints,
@@ -506,6 +507,7 @@ function getEventRulePreset_(presetName, gameType) {
   });
 
   return {
+    playerCount: normalizedRule.playerCount,
     ruleMode: "preset",
     rulePreset: presetName,
     startingPoints: normalizedRule.startingPoints,

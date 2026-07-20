@@ -379,21 +379,113 @@
             <section class="form-section">
               <div class="section-heading">
                 <h2>ウマ・オカ設定</h2>
-                <p>まずはプリセットから選択できます。</p>
+                <p>プリセットを選ぶか、持ち点・返し点・ウマを手動で設定します。</p>
               </div>
 
-              <div class="form-group">
-                <label for="uma-preset">プリセット</label>
-                <select id="uma-preset" name="umaPreset">
-                  <option value="10-30">10-30</option>
-                  <option value="10-20">10-20</option>
-                  <option value="5-10">5-10</option>
-                  <option value="none">なし</option>
-                </select>
+              <fieldset class="choice-fieldset rule-mode-fieldset">
+                <legend>設定方法</legend>
+
+                <div class="choice-grid">
+                  <label class="choice-card">
+                    <input
+                      type="radio"
+                      name="ruleMode"
+                      value="preset"
+                      checked
+                    />
+                    <span class="choice-card-content">
+                      <strong>プリセット</strong>
+                      <small>よく使う設定から選択</small>
+                    </span>
+                  </label>
+
+                  <label class="choice-card">
+                    <input
+                      type="radio"
+                      name="ruleMode"
+                      value="manual"
+                    />
+                    <span class="choice-card-content">
+                      <strong>手動入力</strong>
+                      <small>持ち点・返し点・ウマを指定</small>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <div id="rule-preset-fields" class="rule-setting-panel">
+                <div class="form-group">
+                  <label for="uma-preset">プリセット</label>
+                  <select id="uma-preset" name="umaPreset">
+                    <option value="10-30">10-30</option>
+                    <option value="10-20">10-20</option>
+                    <option value="5-10">5-10</option>
+                    <option value="none">ウマ・オカなし</option>
+                  </select>
+                </div>
               </div>
+
+              <div id="manual-rule-fields" class="rule-setting-panel" hidden>
+                <div class="rule-number-grid">
+                  <div class="form-group">
+                    <label for="starting-points">配給原点（持ち点）</label>
+                    <input
+                      id="starting-points"
+                      name="startingPoints"
+                      type="number"
+                      inputmode="numeric"
+                      min="1"
+                      step="100"
+                      value="25000"
+                    />
+                  </div>
+
+                  <div class="form-group">
+                    <label for="return-points">返し点</label>
+                    <input
+                      id="return-points"
+                      name="returnPoints"
+                      type="number"
+                      inputmode="numeric"
+                      min="1"
+                      step="100"
+                      value="30000"
+                    />
+                  </div>
+                </div>
+
+                <fieldset class="uma-input-fieldset">
+                  <legend>順位別ウマ（千点）</legend>
+                  <p>全順位の合計が0になるように入力してください。</p>
+
+                  <div class="uma-input-grid">
+                    <label>
+                      <span>1位</span>
+                      <input id="uma-1" type="number" inputmode="decimal" step="0.1" value="30" />
+                    </label>
+                    <label>
+                      <span>2位</span>
+                      <input id="uma-2" type="number" inputmode="decimal" step="0.1" value="10" />
+                    </label>
+                    <label>
+                      <span>3位</span>
+                      <input id="uma-3" type="number" inputmode="decimal" step="0.1" value="-10" />
+                    </label>
+                    <label id="uma-4-wrap">
+                      <span>4位</span>
+                      <input id="uma-4" type="number" inputmode="decimal" step="0.1" value="-30" />
+                    </label>
+                  </div>
+                </fieldset>
+              </div>
+
+              <p id="rule-input-error" class="field-error rule-input-error"></p>
 
               <div class="score-preview">
-                <p class="score-preview-label">現在の順位点</p>
+                <div class="score-preview-heading">
+                  <p class="score-preview-label">現在の順位点</p>
+                  <span id="oka-preview" class="oka-preview">オカ +20</span>
+                </div>
 
                 <div id="score-preview-grid" class="score-preview-grid">
                   <div>
@@ -413,6 +505,7 @@
                     <strong id="rank-score-4">-30</strong>
                   </div>
                 </div>
+                <p id="rule-preview-note" class="rule-preview-note">25,000点持ち・30,000点返し</p>
               </div>
             </section>
 

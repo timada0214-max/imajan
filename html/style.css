@@ -2976,3 +2976,127 @@ select:focus {
     grid-template-columns: 91px minmax(0, 1fr) auto;
   }
 }
+
+
+/* STEP10-3: イベントルールのプリセット／手動入力 */
+.rule-mode-fieldset {
+  margin-bottom: 16px;
+}
+
+.rule-setting-panel {
+  margin-bottom: 16px;
+  padding: 16px;
+
+  background: #f8faf9;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-medium);
+}
+
+.rule-setting-panel[hidden] {
+  display: none;
+}
+
+.rule-setting-panel .form-group:last-child {
+  margin-bottom: 0;
+}
+
+.rule-number-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.uma-input-fieldset {
+  margin: 4px 0 0;
+  padding: 0;
+
+  border: 0;
+}
+
+.uma-input-fieldset legend {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.uma-input-fieldset > p {
+  margin: 3px 0 10px;
+
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.uma-input-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.uma-input-grid label {
+  display: grid;
+  gap: 5px;
+}
+
+.uma-input-grid label[hidden] {
+  display: none;
+}
+
+.uma-input-grid span {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.uma-input-grid input {
+  min-width: 0;
+  padding-right: 6px;
+  padding-left: 6px;
+
+  text-align: center;
+}
+
+.rule-input-error {
+  margin-top: -6px;
+  margin-bottom: 12px;
+}
+
+.score-preview-heading {
+  margin-bottom: 12px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.score-preview-heading .score-preview-label {
+  margin: 0;
+}
+
+.oka-preview {
+  padding: 4px 8px;
+
+  color: var(--color-primary-dark);
+  background: var(--color-primary-light);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.rule-preview-note {
+  margin: 10px 0 0;
+
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  text-align: right;
+}
+
+@media (max-width: 420px) {
+  .rule-number-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .uma-input-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

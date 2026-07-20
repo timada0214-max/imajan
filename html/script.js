@@ -85,6 +85,18 @@ const eventCreateForm = document.getElementById("event-create-form");
 const eventNameInput = document.getElementById("event-name");
 const eventNameError = document.getElementById("event-name-error");
 const umaPresetSelect = document.getElementById("uma-preset");
+const rulePresetFields = document.getElementById("rule-preset-fields");
+const manualRuleFields = document.getElementById("manual-rule-fields");
+const startingPointsInput = document.getElementById("starting-points");
+const returnPointsInput = document.getElementById("return-points");
+const uma1Input = document.getElementById("uma-1");
+const uma2Input = document.getElementById("uma-2");
+const uma3Input = document.getElementById("uma-3");
+const uma4Input = document.getElementById("uma-4");
+const uma4Wrap = document.getElementById("uma-4-wrap");
+const ruleInputError = document.getElementById("rule-input-error");
+const okaPreview = document.getElementById("oka-preview");
+const rulePreviewNote = document.getElementById("rule-preview-note");
 const eventCreateMessage = document.getElementById(
   "event-create-message",
 );
@@ -1182,9 +1194,22 @@ function getLocalMatchCount(eventId) {
 }
 
 function normalizeCloudEvent(event) {
+  const rulePreset = String(
+    event.rulePreset || event.umaPreset || "",
+  );
+
   return {
     ...event,
-    umaPreset: String(event.umaPreset || ""),
+    ruleMode: String(event.ruleMode || "preset"),
+    rulePreset: rulePreset,
+    umaPreset: rulePreset,
+    startingPoints: Number(event.startingPoints || 0),
+    returnPoints: Number(event.returnPoints || 0),
+    uma1: Number(event.uma1 || 0),
+    uma2: Number(event.uma2 || 0),
+    uma3: Number(event.uma3 || 0),
+    uma4: Number(event.uma4 || 0),
+    oka: Number(event.oka || 0),
     rankScore1: Number(event.rankScore1 || 0),
     rankScore2: Number(event.rankScore2 || 0),
     rankScore3: Number(event.rankScore3 || 0),
@@ -2091,11 +2116,15 @@ function renderEventDetail() {
   eventSummaryName.textContent = getEventDisplayName(currentEvent);
   eventSummaryType.textContent = eventTypeText;
   eventSummaryGame.textContent = gameTypeText;
-  const umaText = formatDateLikeText(currentEvent.umaPreset);
+  const rulePreset = String(
+    currentEvent.rulePreset || currentEvent.umaPreset || "",
+  );
   eventSummaryUma.textContent =
-    currentEvent.umaPreset === "none"
-      ? "ウマ・オカなし"
-      : umaText || "設定なし";
+    currentEvent.ruleMode === "manual"
+      ? "手動設定"
+      : rulePreset === "none"
+        ? "ウマ・オカなし"
+        : rulePreset || "設定なし";
 
   standingsAllButton.classList.toggle(
     "is-active",
@@ -4241,24 +4270,62 @@ async function handlePlayerAddSubmit(event) {
   }
 }
 
-const UMA_PRESETS = {
-  "10-30": {
-    yonma: [50, 10, -10, -30],
-    sanma: [40, 0, -40],
+const RULE_PRESETS = {
+  yonma: {
+    "10-30": {
+      startingPoints: 25000,
+      returnPoints: 30000,
+      umaByRank: [30, 10, -10, -30],
+    },
+    "10-20": {
+      startingPoints: 25000,
+      returnPoints: 30000,
+      umaByRank: [20, 10, -10, -20],
+    },
+    "5-10": {
+      startingPoints: 25000,
+      returnPoints: 30000,
+      umaByRank: [10, 5, -5, -10],
+    },
+    none: {
+      startingPoints: 30000,
+      returnPoints: 30000,
+      umaByRank: [0, 0, 0, 0],
+    },
   },
-  "10-20": {
-    yonma: [40, 10, -10, -20],
-    sanma: [30, 0, -30],
-  },
-  "5-10": {
-    yonma: [25, 5, -5, -10],
-    sanma: [20, 0, -20],
-  },
-  none: {
-    yonma: [0, 0, 0, 0],
-    sanma: [0, 0, 0],
+  sanma: {
+    "10-30": {
+      startingPoints: 35000,
+      returnPoints: 40000,
+      umaByRank: [25, 0, -25],
+    },
+    "10-20": {
+      startingPoints: 35000,
+      returnPoints: 40000,
+      umaByRank: [20, 0, -20],
+    },
+    "5-10": {
+      startingPoints: 35000,
+      returnPoints: 40000,
+      umaByRank: [10, 0, -10],
+    },
+    none: {
+      startingPoints: 35000,
+      returnPoints: 35000,
+      umaByRank: [0, 0, 0],
+    },
   },
 };
+
+const UMA_PRESETS = Object.fromEntries(
+  ["10-30", "10-20", "5-10", "none"].map((presetName) => [
+    presetName,
+    {
+      yonma: calculateRulePreview(RULE_PRESETS.yonma[presetName]).rankScores,
+      sanma: calculateRulePreview(RULE_PRESETS.sanma[presetName]).rankScores,
+    },
+  ]),
+);
 
 function getSelectedRadioValue(name) {
   const selected = document.querySelector(
@@ -4269,7 +4336,8 @@ function getSelectedRadioValue(name) {
 }
 
 function formatSignedScore(score) {
-  return score > 0 ? `+${score}` : String(score);
+  const rounded = Math.round(Number(score) * 1000) / 1000;
+  return rounded > 0 ? `+${rounded}` : String(rounded);
 }
 
 function getTodayEventName() {
@@ -4277,21 +4345,133 @@ function getTodayEventName() {
   return `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
 }
 
+function calculateRulePreview(rule) {
+  const playerCount = rule.umaByRank.length;
+  const oka =
+    ((Number(rule.returnPoints) - Number(rule.startingPoints)) *
+      playerCount) /
+    1000;
+  const rankScores = rule.umaByRank.map(
+    (uma, index) => Number(uma) + (index === 0 ? oka : 0),
+  );
+
+  return { oka, rankScores };
+}
+
+function getManualRuleFromForm() {
+  const gameType = getSelectedRadioValue("gameType") || "yonma";
+  const playerCount = gameType === "sanma" ? 3 : 4;
+
+  return {
+    startingPoints: Number(startingPointsInput.value),
+    returnPoints: Number(returnPointsInput.value),
+    umaByRank: [
+      Number(uma1Input.value),
+      Number(uma2Input.value),
+      Number(uma3Input.value),
+      Number(uma4Input.value),
+    ].slice(0, playerCount),
+  };
+}
+
+function copyPresetToManualFields() {
+  const gameType = getSelectedRadioValue("gameType") || "yonma";
+  const presetName = umaPresetSelect.value || "10-30";
+  const rule = RULE_PRESETS[gameType][presetName];
+
+  startingPointsInput.value = String(rule.startingPoints);
+  returnPointsInput.value = String(rule.returnPoints);
+  uma1Input.value = String(rule.umaByRank[0] ?? 0);
+  uma2Input.value = String(rule.umaByRank[1] ?? 0);
+  uma3Input.value = String(rule.umaByRank[2] ?? 0);
+  uma4Input.value = String(rule.umaByRank[3] ?? 0);
+}
+
+function updateRuleModeDisplay(options = {}) {
+  const ruleMode = getSelectedRadioValue("ruleMode") || "preset";
+  const isManual = ruleMode === "manual";
+
+  rulePresetFields.hidden = isManual;
+  manualRuleFields.hidden = !isManual;
+
+  if (isManual && options.copyPreset) {
+    copyPresetToManualFields();
+  }
+
+  updateScorePreview();
+}
+
 function updateScorePreview() {
   const gameType = getSelectedRadioValue("gameType") || "yonma";
-  const preset = umaPresetSelect.value || "10-30";
-  const scores = UMA_PRESETS[preset][gameType];
+  const ruleMode = getSelectedRadioValue("ruleMode") || "preset";
+  const playerCount = gameType === "sanma" ? 3 : 4;
+  const rule =
+    ruleMode === "manual"
+      ? getManualRuleFromForm()
+      : RULE_PRESETS[gameType][umaPresetSelect.value || "10-30"];
 
-  rankScore1.textContent = formatSignedScore(scores[0]);
-  rankScore2.textContent = formatSignedScore(scores[1]);
-  rankScore3.textContent = formatSignedScore(scores[2]);
+  const hasValidValues =
+    Number.isFinite(rule.startingPoints) &&
+    Number.isFinite(rule.returnPoints) &&
+    rule.umaByRank.every(Number.isFinite);
 
-  if (gameType === "sanma") {
-    rankScore4Wrap.hidden = true;
-  } else {
-    rankScore4Wrap.hidden = false;
-    rankScore4.textContent = formatSignedScore(scores[3]);
+  const preview = hasValidValues
+    ? calculateRulePreview(rule)
+    : { oka: 0, rankScores: Array(playerCount).fill(0) };
+
+  rankScore1.textContent = formatSignedScore(preview.rankScores[0] || 0);
+  rankScore2.textContent = formatSignedScore(preview.rankScores[1] || 0);
+  rankScore3.textContent = formatSignedScore(preview.rankScores[2] || 0);
+  okaPreview.textContent = `オカ ${formatSignedScore(preview.oka)}`;
+  rulePreviewNote.textContent = hasValidValues
+    ? `${Number(rule.startingPoints).toLocaleString("ja-JP")}点持ち・${Number(rule.returnPoints).toLocaleString("ja-JP")}点返し`
+    : "数値を入力すると順位点を確認できます";
+
+  const isSanma = gameType === "sanma";
+  rankScore4Wrap.hidden = isSanma;
+  uma4Wrap.hidden = isSanma;
+
+  if (!isSanma) {
+    rankScore4.textContent = formatSignedScore(preview.rankScores[3] || 0);
   }
+}
+
+function validateRuleForm() {
+  ruleInputError.textContent = "";
+
+  if ((getSelectedRadioValue("ruleMode") || "preset") !== "manual") {
+    return true;
+  }
+
+  const rule = getManualRuleFromForm();
+
+  if (
+    !Number.isFinite(rule.startingPoints) ||
+    rule.startingPoints <= 0 ||
+    !Number.isFinite(rule.returnPoints) ||
+    rule.returnPoints <= 0
+  ) {
+    ruleInputError.textContent =
+      "配給原点と返し点は、0より大きい数値で入力してください。";
+    return false;
+  }
+
+  if (rule.umaByRank.some((value) => !Number.isFinite(value))) {
+    ruleInputError.textContent = "すべての順位のウマを入力してください。";
+    return false;
+  }
+
+  const umaTotal = rule.umaByRank.reduce(
+    (total, value) => total + value,
+    0,
+  );
+
+  if (Math.abs(umaTotal) >= 0.0001) {
+    ruleInputError.textContent = `ウマの合計を0にしてください（現在：${formatSignedScore(umaTotal)}）。`;
+    return false;
+  }
+
+  return true;
 }
 
 function validateEventForm() {
@@ -4310,7 +4490,7 @@ function validateEventForm() {
     return false;
   }
 
-  return true;
+  return validateRuleForm();
 }
 
 async function handleEventCreateSubmit(event) {
@@ -4324,12 +4504,32 @@ async function handleEventCreateSubmit(event) {
   eventSaveButton.textContent = "作成中...";
 
   try {
+    const gameType = getSelectedRadioValue("gameType");
+    const ruleMode = getSelectedRadioValue("ruleMode") || "preset";
+    const manualRule =
+      ruleMode === "manual" ? getManualRuleFromForm() : null;
+    const rulePayload =
+      ruleMode === "manual"
+        ? {
+            ruleMode: "manual",
+            startingPoints: manualRule.startingPoints,
+            returnPoints: manualRule.returnPoints,
+            uma1: manualRule.umaByRank[0],
+            uma2: manualRule.umaByRank[1],
+            uma3: manualRule.umaByRank[2],
+            uma4: gameType === "sanma" ? 0 : manualRule.umaByRank[3],
+          }
+        : {
+            ruleMode: "preset",
+            rulePreset: umaPresetSelect.value,
+          };
+
     const createdEvent = await callGasApi("createEvent", {
       ownerUserId: currentUser.userId,
       name: eventNameInput.value.trim() || getTodayEventName(),
       eventType: getSelectedRadioValue("eventType"),
-      gameType: getSelectedRadioValue("gameType"),
-      umaPreset: umaPresetSelect.value,
+      gameType: gameType,
+      ...rulePayload,
       status: "active",
     });
 
@@ -4486,8 +4686,10 @@ function showEventCreateScreen() {
   eventNameInput.classList.remove("input-error");
   eventCreateMessage.textContent = "";
   eventCreateMessage.className = "form-message";
+  ruleInputError.textContent = "";
 
-  updateScorePreview();
+  copyPresetToManualFields();
+  updateRuleModeDisplay();
   window.setTimeout(() => eventNameInput.focus(), 0);
 }
 
@@ -4573,13 +4775,46 @@ eventNameInput.addEventListener("input", () => {
   eventCreateMessage.className = "form-message";
 });
 
-umaPresetSelect.addEventListener("change", updateScorePreview);
+umaPresetSelect.addEventListener("change", () => {
+  if ((getSelectedRadioValue("ruleMode") || "preset") === "manual") {
+    copyPresetToManualFields();
+  }
+  ruleInputError.textContent = "";
+  updateScorePreview();
+});
+
+document
+  .querySelectorAll('input[name="ruleMode"]')
+  .forEach((radio) => {
+    radio.addEventListener("change", () => {
+      ruleInputError.textContent = "";
+      updateRuleModeDisplay({ copyPreset: radio.value === "manual" });
+    });
+  });
 
 document
   .querySelectorAll('input[name="gameType"]')
   .forEach((radio) => {
-    radio.addEventListener("change", updateScorePreview);
+    radio.addEventListener("change", () => {
+      copyPresetToManualFields();
+      ruleInputError.textContent = "";
+      updateScorePreview();
+    });
   });
+
+[
+  startingPointsInput,
+  returnPointsInput,
+  uma1Input,
+  uma2Input,
+  uma3Input,
+  uma4Input,
+].forEach((input) => {
+  input.addEventListener("input", () => {
+    ruleInputError.textContent = "";
+    updateScorePreview();
+  });
+});
 
 
 eventDetailBackButton.addEventListener("click", () => {

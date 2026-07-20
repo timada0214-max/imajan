@@ -820,6 +820,26 @@ function getEventRulePreset_(presetName, gameType) {
       },
     },
     sanma: {
+      "30-0-30": {
+        startingPoints: 35000,
+        returnPoints: 40000,
+        umaByRank: [30, 0, -30],
+      },
+      "20-0-20": {
+        startingPoints: 35000,
+        returnPoints: 40000,
+        umaByRank: [20, 0, -20],
+      },
+      "15-0-15": {
+        startingPoints: 35000,
+        returnPoints: 40000,
+        umaByRank: [15, 0, -15],
+      },
+      none: {
+        startingPoints: 35000,
+        returnPoints: 35000,
+        umaByRank: [0, 0, 0],
+      },
       "10-30": {
         startingPoints: 35000,
         returnPoints: 40000,
@@ -834,11 +854,6 @@ function getEventRulePreset_(presetName, gameType) {
         startingPoints: 35000,
         returnPoints: 40000,
         umaByRank: [10, 0, -10],
-      },
-      none: {
-        startingPoints: 35000,
-        returnPoints: 35000,
-        umaByRank: [0, 0, 0],
       },
     },
   };

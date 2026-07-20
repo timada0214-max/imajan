@@ -4663,6 +4663,26 @@ const RULE_PRESETS = {
     },
   },
   sanma: {
+    "30-0-30": {
+      startingPoints: 35000,
+      returnPoints: 40000,
+      umaByRank: [30, 0, -30],
+    },
+    "20-0-20": {
+      startingPoints: 35000,
+      returnPoints: 40000,
+      umaByRank: [20, 0, -20],
+    },
+    "15-0-15": {
+      startingPoints: 35000,
+      returnPoints: 40000,
+      umaByRank: [15, 0, -15],
+    },
+    none: {
+      startingPoints: 35000,
+      returnPoints: 35000,
+      umaByRank: [0, 0, 0],
+    },
     "10-30": {
       startingPoints: 35000,
       returnPoints: 40000,
@@ -4678,23 +4698,35 @@ const RULE_PRESETS = {
       returnPoints: 40000,
       umaByRank: [10, 0, -10],
     },
-    none: {
-      startingPoints: 35000,
-      returnPoints: 35000,
-      umaByRank: [0, 0, 0],
-    },
   },
 };
 
-const UMA_PRESETS = Object.fromEntries(
-  ["10-30", "10-20", "5-10", "none"].map((presetName) => [
-    presetName,
-    {
-      yonma: calculateRulePreview(RULE_PRESETS.yonma[presetName]).rankScores,
-      sanma: calculateRulePreview(RULE_PRESETS.sanma[presetName]).rankScores,
-    },
-  ]),
-);
+const RULE_PRESET_OPTIONS = {
+  yonma: [
+    { value: "10-30", label: "10-30" },
+    { value: "10-20", label: "10-20" },
+    { value: "5-10", label: "5-10" },
+    { value: "none", label: "ウマ・オカなし" },
+  ],
+  sanma: [
+    { value: "30-0-30", label: "30-0-30" },
+    { value: "20-0-20", label: "20-0-20" },
+    { value: "15-0-15", label: "15-0-15" },
+    { value: "none", label: "ウマ・オカなし" },
+  ],
+};
+
+const UMA_PRESETS = {};
+Object.keys(RULE_PRESETS).forEach((gameType) => {
+  Object.keys(RULE_PRESETS[gameType]).forEach((presetName) => {
+    if (!UMA_PRESETS[presetName]) {
+      UMA_PRESETS[presetName] = {};
+    }
+    UMA_PRESETS[presetName][gameType] = calculateRulePreview(
+      RULE_PRESETS[gameType][presetName],
+    ).rankScores;
+  });
+});
 
 function getSelectedRadioValue(name) {
   const selected = document.querySelector(
@@ -4743,10 +4775,46 @@ function getManualRuleFromForm() {
   };
 }
 
+function getDefaultPresetName(gameType) {
+  return gameType === "sanma" ? "30-0-30" : "10-30";
+}
+
+function getPresetRule(gameType, presetName) {
+  const presetsForGameType = RULE_PRESETS[gameType] || RULE_PRESETS.yonma;
+  const defaultPresetName = getDefaultPresetName(gameType);
+
+  return (
+    presetsForGameType[presetName] ||
+    presetsForGameType[defaultPresetName]
+  );
+}
+
+function updateUmaPresetOptions(options = {}) {
+  const gameType = getSelectedRadioValue("gameType") || "yonma";
+  const previousValue = options.preserveValue ? umaPresetSelect.value : "";
+  const presetOptions = RULE_PRESET_OPTIONS[gameType];
+
+  umaPresetSelect.replaceChildren();
+  presetOptions.forEach((presetOption) => {
+    const option = document.createElement("option");
+    option.value = presetOption.value;
+    option.textContent = presetOption.label;
+    umaPresetSelect.appendChild(option);
+  });
+
+  const canPreserve = presetOptions.some(
+    (presetOption) => presetOption.value === previousValue,
+  );
+  umaPresetSelect.value = canPreserve
+    ? previousValue
+    : getDefaultPresetName(gameType);
+}
+
 function copyPresetToManualFields() {
   const gameType = getSelectedRadioValue("gameType") || "yonma";
-  const presetName = umaPresetSelect.value || "10-30";
-  const rule = RULE_PRESETS[gameType][presetName];
+  const presetName =
+    umaPresetSelect.value || getDefaultPresetName(gameType);
+  const rule = getPresetRule(gameType, presetName);
 
   startingPointsInput.value = String(rule.startingPoints);
   returnPointsInput.value = String(rule.returnPoints);
@@ -4777,7 +4845,10 @@ function updateScorePreview() {
   const rule =
     ruleMode === "manual"
       ? getManualRuleFromForm()
-      : RULE_PRESETS[gameType][umaPresetSelect.value || "10-30"];
+      : getPresetRule(
+          gameType,
+          umaPresetSelect.value || getDefaultPresetName(gameType),
+        );
 
   const hasValidValues =
     Number.isFinite(rule.startingPoints) &&
@@ -4908,7 +4979,9 @@ async function handleEventCreateSubmit(event) {
     currentEventStatus = "active";
     switchEventStatus("active");
     eventCreateForm.reset();
-    updateScorePreview();
+    updateUmaPresetOptions();
+    copyPresetToManualFields();
+    updateRuleModeDisplay();
     showEventListScreen();
   } catch (error) {
     console.error(error);
@@ -5070,6 +5143,10 @@ function handleCreateEvent() {
  * 初期表示を行います。
  */
 function initializeApp() {
+  updateUmaPresetOptions({ preserveValue: true });
+  copyPresetToManualFields();
+  updateScorePreview();
+
   const savedUser = loadSession();
 
   if (savedUser) {
@@ -5165,6 +5242,7 @@ document
   .querySelectorAll('input[name="gameType"]')
   .forEach((radio) => {
     radio.addEventListener("change", () => {
+      updateUmaPresetOptions();
       copyPresetToManualFields();
       ruleInputError.textContent = "";
       updateScorePreview();

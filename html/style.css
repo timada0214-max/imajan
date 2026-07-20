@@ -3814,3 +3814,78 @@ select:focus {
     font-size: 9px;
   }
 }
+
+/* STEP14-2D 半荘登録：点数入力ユニットの横幅・間隔調整 */
+#match-create-screen .match-entry-column-headings,
+#match-create-screen .match-entry-fields {
+  grid-template-columns: minmax(0, 1fr) 172px;
+}
+
+#match-create-screen .match-point-control {
+  grid-template-columns: 58px minmax(72px, 1fr) 32px;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+}
+
+#match-create-screen .match-sign-buttons {
+  width: 58px;
+}
+
+#match-create-screen .match-sign-button {
+  width: 29px;
+  min-width: 29px;
+}
+
+#match-create-screen .match-point-unit {
+  min-width: 32px;
+  justify-content: flex-start;
+  font-size: 10px;
+}
+
+@media (max-width: 420px) {
+  #match-create-screen .match-entry-column-headings,
+  #match-create-screen .match-entry-fields {
+    grid-template-columns: minmax(0, 1fr) 166px;
+  }
+
+  #match-create-screen .match-point-control {
+    grid-template-columns: 56px minmax(74px, 1fr) 32px;
+    gap: 2px;
+  }
+
+  #match-create-screen .match-sign-buttons {
+    width: 56px;
+  }
+
+  #match-create-screen .match-sign-button {
+    width: 28px;
+    min-width: 28px;
+  }
+}
+
+@media (max-width: 370px) {
+  #match-create-screen .match-entry-column-headings,
+  #match-create-screen .match-entry-fields {
+    grid-template-columns: minmax(0, 1fr) 158px;
+  }
+
+  #match-create-screen .match-point-control {
+    grid-template-columns: 54px minmax(70px, 1fr) 30px;
+    gap: 2px;
+  }
+
+  #match-create-screen .match-sign-buttons {
+    width: 54px;
+  }
+
+  #match-create-screen .match-sign-button {
+    width: 27px;
+    min-width: 27px;
+  }
+
+  #match-create-screen .match-point-unit {
+    min-width: 30px;
+    font-size: 9px;
+  }
+}

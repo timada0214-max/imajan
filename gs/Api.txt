@@ -1,0 +1,976 @@
+"use strict";
+
+function routeApiRequest_(action, payload) {
+  switch (action) {
+    case "ping":
+      return apiPing_();
+
+    case "createUser":
+      return apiCreateUser_(payload);
+
+    case "loginUser":
+      return apiLoginUser_(payload);
+
+    case "createEvent":
+      return apiCreateEvent_(payload);
+
+    case "listEvents":
+      return apiListEvents_(payload);
+
+    case "createPlayer":
+      return apiCreatePlayer_(payload);
+
+    case "listPlayers":
+      return apiListPlayers_(payload);
+
+    case "saveMatch":
+      return apiSaveMatch_(payload);
+
+    case "listMatches":
+      return apiListMatches_(payload);
+
+    case "deleteMatch":
+      return apiDeleteMatch_(payload);
+
+    case "saveAdjustment":
+      return apiSaveAdjustment_(payload);
+
+    case "listAdjustments":
+      return apiListAdjustments_(payload);
+
+    case "deleteAdjustment":
+      return apiDeleteAdjustment_(payload);
+
+    default:
+      const notFoundError = new Error(
+        "指定されたAPI操作は存在しません: " + action
+      );
+      notFoundError.code = "ACTION_NOT_FOUND";
+      throw notFoundError;
+  }
+}
+
+function apiPing_() {
+  const spreadsheet = getAppSpreadsheet_();
+  const missingSheets = SHEET_DEFINITIONS
+    .map(function (definition) {
+      return definition.name;
+    })
+    .filter(function (sheetName) {
+      return !spreadsheet.getSheetByName(sheetName);
+    });
+
+  if (missingSheets.length > 0) {
+    const setupError = new Error(
+      "初期設定が完了していません。setupSpreadsheetを実行してください。不足シート: " +
+        missingSheets.join(", ")
+    );
+    setupError.code = "SETUP_REQUIRED";
+    throw setupError;
+  }
+
+  return {
+    appName: APP_CONFIG.APP_NAME,
+    apiVersion: APP_CONFIG.API_VERSION,
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetName: spreadsheet.getName(),
+    sheetCount: SHEET_DEFINITIONS.length,
+    serverTime: getNowIso_(),
+  };
+}
+
+
+function apiCreateUser_(payload) {
+  validateUserPayload_(payload);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const sheet = getSheetByNameOrThrow_(
+      APP_CONFIG.SHEETS.USERS
+    );
+    const nickname = String(payload.nickname).trim();
+    const users = getSheetRecords_(sheet);
+    const duplicatedUser = users.find(function (user) {
+      return (
+        String(user.nickname).trim().toLowerCase() ===
+        nickname.toLowerCase()
+      );
+    });
+
+    if (duplicatedUser) {
+      const duplicateError = new Error(
+        "同じニックネームが既に登録されています。"
+      );
+      duplicateError.code = "DUPLICATE_NICKNAME";
+      throw duplicateError;
+    }
+
+    const now = getNowIso_();
+    const userId =
+      String(payload.preferredUserId || "").trim() ||
+      createId_("user");
+
+    sheet.appendRow([
+      userId,
+      nickname,
+      createPinHash_(payload.pin),
+      "active",
+      now,
+      now,
+    ]);
+
+    return {
+      userId: userId,
+      nickname: nickname,
+      createdAt: now,
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function apiLoginUser_(payload) {
+  validateUserPayload_(payload);
+
+  const sheet = getSheetByNameOrThrow_(
+    APP_CONFIG.SHEETS.USERS
+  );
+  const nickname = String(payload.nickname).trim();
+  const user = getSheetRecords_(sheet).find(function (item) {
+    return (
+      String(item.nickname).trim().toLowerCase() ===
+      nickname.toLowerCase()
+    );
+  });
+
+  if (!user) {
+    const notFoundError = new Error(
+      "ニックネームまたは暗証番号が正しくありません。先に新規登録してください。"
+    );
+    notFoundError.code = "USER_NOT_FOUND";
+    throw notFoundError;
+  }
+
+  if (
+    String(user.status || "active") !== "active" ||
+    !verifyPinHash_(payload.pin, user.pinHash)
+  ) {
+    const authenticationError = new Error(
+      "ニックネームまたは暗証番号が正しくありません。"
+    );
+    authenticationError.code = "AUTHENTICATION_FAILED";
+    throw authenticationError;
+  }
+
+  return {
+    userId: String(user.userId),
+    nickname: String(user.nickname),
+    createdAt:
+      user.createdAt instanceof Date
+        ? user.createdAt.toISOString()
+        : String(user.createdAt || ""),
+  };
+}
+
+function validateUserPayload_(payload) {
+  if (!payload || typeof payload !== "object") {
+    const payloadError = new Error(
+      "ユーザー情報が送信されていません。"
+    );
+    payloadError.code = "INVALID_USER_PAYLOAD";
+    throw payloadError;
+  }
+
+  const nickname = String(payload.nickname || "").trim();
+  const pin = String(payload.pin || "");
+
+  if (nickname.length < 1 || nickname.length > 20) {
+    const nicknameError = new Error(
+      "ニックネームは1文字以上20文字以内で入力してください。"
+    );
+    nicknameError.code = "INVALID_NICKNAME";
+    throw nicknameError;
+  }
+
+  if (!/^\d{4}$/.test(pin)) {
+    const pinError = new Error(
+      "暗証番号は4桁の数字で入力してください。"
+    );
+    pinError.code = "INVALID_PIN";
+    throw pinError;
+  }
+}
+
+
+function apiCreateEvent_(payload) {
+  validateEventPayload_(payload);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const sheet = getSheetByNameOrThrow_(
+      APP_CONFIG.SHEETS.EVENTS
+    );
+    const events = getSheetRecords_(sheet);
+    const preferredEventId = String(
+      payload.preferredEventId || ""
+    ).trim();
+
+    if (preferredEventId) {
+      const existingEvent = events.find(function (event) {
+        return String(event.eventId) === preferredEventId;
+      });
+
+      if (existingEvent) {
+        if (
+          String(existingEvent.ownerUserId) !==
+          String(payload.ownerUserId)
+        ) {
+          const ownershipError = new Error(
+            "同じイベントIDが別のユーザーに使用されています。"
+          );
+          ownershipError.code = "EVENT_ID_CONFLICT";
+          throw ownershipError;
+        }
+
+        return serializeEventRecord_(
+          existingEvent,
+          getMatchCountMap_()
+        );
+      }
+    }
+
+    const rankScores = getEventRankScores_(
+      payload.umaPreset,
+      payload.gameType
+    );
+    const now = getNowIso_();
+    const createdAt =
+      normalizeOptionalIso_(payload.createdAt) || now;
+    const updatedAt =
+      normalizeOptionalIso_(payload.updatedAt) || createdAt;
+    const eventId =
+      preferredEventId || createId_("event");
+
+    sheet.appendRow([
+      eventId,
+      String(payload.ownerUserId),
+      String(payload.name).trim(),
+      String(payload.eventType),
+      String(payload.gameType),
+      String(payload.umaPreset),
+      rankScores[0] || 0,
+      rankScores[1] || 0,
+      rankScores[2] || 0,
+      rankScores[3] || 0,
+      String(payload.status || "active"),
+      createdAt,
+      updatedAt,
+    ]);
+
+    return {
+      eventId: eventId,
+      ownerUserId: String(payload.ownerUserId),
+      name: String(payload.name).trim(),
+      eventType: String(payload.eventType),
+      gameType: String(payload.gameType),
+      umaPreset: String(payload.umaPreset),
+      rankScore1: Number(rankScores[0] || 0),
+      rankScore2: Number(rankScores[1] || 0),
+      rankScore3: Number(rankScores[2] || 0),
+      rankScore4: Number(rankScores[3] || 0),
+      status: String(payload.status || "active"),
+      matchCount: 0,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function apiListEvents_(payload) {
+  const ownerUserId = String(
+    payload && payload.ownerUserId
+      ? payload.ownerUserId
+      : ""
+  ).trim();
+
+  if (!ownerUserId) {
+    const ownerError = new Error(
+      "ユーザーIDが指定されていません。"
+    );
+    ownerError.code = "INVALID_OWNER_USER_ID";
+    throw ownerError;
+  }
+
+  const sheet = getSheetByNameOrThrow_(
+    APP_CONFIG.SHEETS.EVENTS
+  );
+  const matchCountMap = getMatchCountMap_();
+
+  return getSheetRecords_(sheet)
+    .filter(function (event) {
+      return String(event.ownerUserId) === ownerUserId;
+    })
+    .map(function (event) {
+      return serializeEventRecord_(
+        event,
+        matchCountMap
+      );
+    })
+    .sort(function (a, b) {
+      return (
+        new Date(b.updatedAt).getTime() -
+        new Date(a.updatedAt).getTime()
+      );
+    });
+}
+
+function validateEventPayload_(payload) {
+  if (!payload || typeof payload !== "object") {
+    const payloadError = new Error(
+      "イベント情報が送信されていません。"
+    );
+    payloadError.code = "INVALID_EVENT_PAYLOAD";
+    throw payloadError;
+  }
+
+  const ownerUserId = String(
+    payload.ownerUserId || ""
+  ).trim();
+  const name = String(payload.name || "").trim();
+  const eventType = String(payload.eventType || "");
+  const gameType = String(payload.gameType || "");
+  const umaPreset = String(payload.umaPreset || "");
+  const status = String(payload.status || "active");
+
+  if (!ownerUserId) {
+    const ownerError = new Error(
+      "ユーザーIDが指定されていません。"
+    );
+    ownerError.code = "INVALID_OWNER_USER_ID";
+    throw ownerError;
+  }
+
+  if (name.length < 1 || name.length > 40) {
+    const nameError = new Error(
+      "イベント名は1文字以上40文字以内で入力してください。"
+    );
+    nameError.code = "INVALID_EVENT_NAME";
+    throw nameError;
+  }
+
+  if (
+    ["league", "single"].indexOf(eventType) === -1
+  ) {
+    const typeError = new Error(
+      "イベント種別が正しくありません。"
+    );
+    typeError.code = "INVALID_EVENT_TYPE";
+    throw typeError;
+  }
+
+  if (
+    ["yonma", "sanma"].indexOf(gameType) === -1
+  ) {
+    const gameError = new Error(
+      "麻雀種別が正しくありません。"
+    );
+    gameError.code = "INVALID_GAME_TYPE";
+    throw gameError;
+  }
+
+  if (
+    ["10-30", "10-20", "5-10", "none"].indexOf(
+      umaPreset
+    ) === -1
+  ) {
+    const umaError = new Error(
+      "ウマ・オカ設定が正しくありません。"
+    );
+    umaError.code = "INVALID_UMA_PRESET";
+    throw umaError;
+  }
+
+  if (
+    ["active", "completed"].indexOf(status) === -1
+  ) {
+    const statusError = new Error(
+      "イベント状態が正しくありません。"
+    );
+    statusError.code = "INVALID_EVENT_STATUS";
+    throw statusError;
+  }
+}
+
+function getEventRankScores_(umaPreset, gameType) {
+  const presets = {
+    "10-30": {
+      yonma: [50, 10, -10, -30],
+      sanma: [40, 0, -40, 0],
+    },
+    "10-20": {
+      yonma: [40, 10, -10, -20],
+      sanma: [30, 0, -30, 0],
+    },
+    "5-10": {
+      yonma: [25, 5, -5, -10],
+      sanma: [20, 0, -20, 0],
+    },
+    none: {
+      yonma: [0, 0, 0, 0],
+      sanma: [0, 0, 0, 0],
+    },
+  };
+
+  if (!presets[umaPreset] || !presets[umaPreset][gameType]) {
+    const error = new Error("ウマ・オカ設定が正しくありません。");
+    error.code = "INVALID_UMA_PRESET";
+    throw error;
+  }
+
+  return presets[umaPreset][gameType];
+}
+
+function getMatchCountMap_() {
+  const sheet = getSheetByNameOrThrow_(
+    APP_CONFIG.SHEETS.MATCHES
+  );
+  const countMap = {};
+
+  getSheetRecords_(sheet).forEach(function (match) {
+    const eventId = String(match.eventId);
+    countMap[eventId] =
+      (countMap[eventId] || 0) + 1;
+  });
+
+  return countMap;
+}
+
+function serializeEventRecord_(event, matchCountMap) {
+  return {
+    eventId: String(event.eventId),
+    ownerUserId: String(event.ownerUserId),
+    name: String(event.name),
+    eventType: String(event.eventType),
+    gameType: String(event.gameType),
+    umaPreset: String(event.umaPreset || ""),
+    rankScore1: Number(event.rankScore1 || 0),
+    rankScore2: Number(event.rankScore2 || 0),
+    rankScore3: Number(event.rankScore3 || 0),
+    rankScore4: Number(event.rankScore4 || 0),
+    status: String(event.status || "active"),
+    matchCount:
+      matchCountMap[String(event.eventId)] || 0,
+    createdAt: toIsoString_(event.createdAt),
+    updatedAt: toIsoString_(event.updatedAt),
+  };
+}
+
+function apiCreatePlayer_(payload) {
+  validatePlayerPayload_(payload);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const ownerUserId = String(payload.ownerUserId).trim();
+    const eventId = String(payload.eventId).trim();
+    assertEventOwnership_(eventId, ownerUserId);
+
+    const sheet = getSheetByNameOrThrow_(
+      APP_CONFIG.SHEETS.PLAYERS
+    );
+    const players = getSheetRecords_(sheet);
+    const preferredPlayerId = String(
+      payload.preferredPlayerId || ""
+    ).trim();
+
+    if (preferredPlayerId) {
+      const existingPlayer = players.find(function (player) {
+        return String(player.playerId) === preferredPlayerId;
+      });
+
+      if (existingPlayer) {
+        if (String(existingPlayer.eventId) !== eventId) {
+          const conflictError = new Error(
+            "同じプレイヤーIDが別のイベントに使用されています。"
+          );
+          conflictError.code = "PLAYER_ID_CONFLICT";
+          throw conflictError;
+        }
+
+        return serializePlayerRecord_(existingPlayer);
+      }
+    }
+
+    const name = String(payload.name).trim();
+    const duplicatedPlayer = players.find(function (player) {
+      return (
+        String(player.eventId) === eventId &&
+        String(player.name).trim().toLowerCase() ===
+          name.toLowerCase()
+      );
+    });
+
+    if (duplicatedPlayer) {
+      const duplicateError = new Error(
+        "同じ名前のプレイヤーが既に登録されています。"
+      );
+      duplicateError.code = "DUPLICATE_PLAYER_NAME";
+      throw duplicateError;
+    }
+
+    const now = getNowIso_();
+    const createdAt =
+      normalizeOptionalIso_(payload.createdAt) || now;
+    const updatedAt =
+      normalizeOptionalIso_(payload.updatedAt) || createdAt;
+    const playerId =
+      preferredPlayerId || createId_("player");
+    const sortOrder = Number.isFinite(Number(payload.sortOrder))
+      ? Number(payload.sortOrder)
+      : players.filter(function (player) {
+          return String(player.eventId) === eventId;
+        }).length + 1;
+
+    sheet.appendRow([
+      playerId,
+      eventId,
+      name,
+      sortOrder,
+      createdAt,
+      updatedAt,
+    ]);
+
+    return {
+      playerId: playerId,
+      eventId: eventId,
+      name: name,
+      sortOrder: sortOrder,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function apiListPlayers_(payload) {
+  const ownerUserId = String(
+    payload && payload.ownerUserId
+      ? payload.ownerUserId
+      : ""
+  ).trim();
+  const eventId = String(
+    payload && payload.eventId ? payload.eventId : ""
+  ).trim();
+
+  if (!ownerUserId) {
+    const ownerError = new Error(
+      "ユーザーIDが指定されていません。"
+    );
+    ownerError.code = "INVALID_OWNER_USER_ID";
+    throw ownerError;
+  }
+
+  const ownedEventIds = getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
+  )
+    .filter(function (event) {
+      return String(event.ownerUserId) === ownerUserId;
+    })
+    .map(function (event) {
+      return String(event.eventId);
+    });
+
+  if (eventId && ownedEventIds.indexOf(eventId) === -1) {
+    const ownershipError = new Error(
+      "指定されたイベントを操作する権限がありません。"
+    );
+    ownershipError.code = "EVENT_ACCESS_DENIED";
+    throw ownershipError;
+  }
+
+  return getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS)
+  )
+    .filter(function (player) {
+      const playerEventId = String(player.eventId);
+      return (
+        ownedEventIds.indexOf(playerEventId) !== -1 &&
+        (!eventId || playerEventId === eventId)
+      );
+    })
+    .map(serializePlayerRecord_)
+    .sort(function (a, b) {
+      if (a.eventId !== b.eventId) {
+        return a.eventId.localeCompare(b.eventId);
+      }
+
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+
+      return (
+        new Date(a.createdAt).getTime() -
+        new Date(b.createdAt).getTime()
+      );
+    });
+}
+
+function validatePlayerPayload_(payload) {
+  if (!payload || typeof payload !== "object") {
+    const payloadError = new Error(
+      "プレイヤー情報が送信されていません。"
+    );
+    payloadError.code = "INVALID_PLAYER_PAYLOAD";
+    throw payloadError;
+  }
+
+  const ownerUserId = String(payload.ownerUserId || "").trim();
+  const eventId = String(payload.eventId || "").trim();
+  const name = String(payload.name || "").trim();
+
+  if (!ownerUserId) {
+    const ownerError = new Error(
+      "ユーザーIDが指定されていません。"
+    );
+    ownerError.code = "INVALID_OWNER_USER_ID";
+    throw ownerError;
+  }
+
+  if (!eventId) {
+    const eventError = new Error(
+      "イベントIDが指定されていません。"
+    );
+    eventError.code = "INVALID_EVENT_ID";
+    throw eventError;
+  }
+
+  if (name.length < 1 || name.length > 20) {
+    const nameError = new Error(
+      "プレイヤー名は1文字以上20文字以内で入力してください。"
+    );
+    nameError.code = "INVALID_PLAYER_NAME";
+    throw nameError;
+  }
+}
+
+function assertEventOwnership_(eventId, ownerUserId) {
+  const event = getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
+  ).find(function (item) {
+    return String(item.eventId) === String(eventId);
+  });
+
+  if (!event) {
+    const notFoundError = new Error(
+      "指定されたイベントが見つかりません。"
+    );
+    notFoundError.code = "EVENT_NOT_FOUND";
+    throw notFoundError;
+  }
+
+  if (String(event.ownerUserId) !== String(ownerUserId)) {
+    const ownershipError = new Error(
+      "指定されたイベントを操作する権限がありません。"
+    );
+    ownershipError.code = "EVENT_ACCESS_DENIED";
+    throw ownershipError;
+  }
+}
+
+function serializePlayerRecord_(player) {
+  return {
+    playerId: String(player.playerId),
+    eventId: String(player.eventId),
+    name: String(player.name),
+    sortOrder: Number(player.sortOrder || 0),
+    createdAt: toIsoString_(player.createdAt),
+    updatedAt: toIsoString_(player.updatedAt),
+  };
+}
+
+
+function apiSaveMatch_(payload) {
+  validateMatchPayload_(payload);
+  assertEventOwnership_(payload.eventId, payload.ownerUserId);
+  const lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    const matchSheet = getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCHES);
+    const resultSheet = getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCH_RESULTS);
+    const matches = getSheetRecords_(matchSheet);
+    const matchId = String(payload.preferredMatchId || payload.matchId || "").trim() || createId_("match");
+    const existingIndex = matches.findIndex(function (m) { return String(m.matchId) === matchId; });
+    const now = getNowIso_();
+    const createdAt = existingIndex >= 0 ? toIsoString_(matches[existingIndex].createdAt) : String(payload.createdAt || now);
+    const playedAt = String(payload.playedAt || payload.createdAt || now);
+    const row = [matchId, String(payload.eventId), String(payload.gameType), playedAt, createdAt, now];
+    if (existingIndex >= 0) matchSheet.getRange(existingIndex + 2, 1, 1, row.length).setValues([row]); else matchSheet.appendRow(row);
+    const values = resultSheet.getDataRange().getValues();
+    for (let i = values.length - 1; i >= 1; i -= 1) if (String(values[i][1]) === matchId) resultSheet.deleteRow(i + 1);
+    (payload.results || []).forEach(function (result, index) {
+      resultSheet.appendRow([createId_("matchResult"), matchId, String(result.playerId), Number(result.points), Number(result.rank), Number(result.rankPoint), Number(result.finalScore), Number(index + 1), createdAt, now]);
+    });
+    return { matchId: matchId, eventId: String(payload.eventId), gameType: String(payload.gameType), umaPreset: String(payload.umaPreset || ""), entryOrderPlayerIds: payload.entryOrderPlayerIds || [], tieBreakOrderPlayerIds: payload.tieBreakOrderPlayerIds || [], results: payload.results || [], playedAt: playedAt, createdAt: createdAt, updatedAt: now };
+  } finally { lock.releaseLock(); }
+}
+
+function apiListMatches_(payload) {
+  const ownerUserId = String((payload && payload.ownerUserId) || "").trim();
+  if (!ownerUserId) throw new Error("ユーザーIDが指定されていません。");
+  const eventIds = getSheetRecords_(getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)).filter(function (event) { return String(event.ownerUserId) === ownerUserId; }).map(function (event) { return String(event.eventId); });
+  const results = getSheetRecords_(getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCH_RESULTS));
+  return getSheetRecords_(getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCHES)).filter(function (match) { return eventIds.indexOf(String(match.eventId)) !== -1; }).map(function (match) {
+    const matchResults = results.filter(function (r) { return String(r.matchId) === String(match.matchId); }).sort(function (a,b) { return Number(a.rank) - Number(b.rank); }).map(function (r) { return { playerId: String(r.playerId), playerName: "", points: Number(r.rawScore), rank: Number(r.rank), rankPoint: Number(r.rankScore), finalScore: Number(r.finalScore) }; });
+    return { matchId: String(match.matchId), eventId: String(match.eventId), gameType: String(match.gameType), umaPreset: "", entryOrderPlayerIds: matchResults.map(function(r){return r.playerId;}), tieBreakOrderPlayerIds: [], results: matchResults, playedAt: toIsoString_(match.playedAt), createdAt: toIsoString_(match.createdAt), updatedAt: toIsoString_(match.updatedAt) };
+  });
+}
+
+function apiDeleteMatch_(payload) {
+  const matchId = String((payload && payload.matchId) || "").trim();
+  const ownerUserId = String((payload && payload.ownerUserId) || "").trim();
+  const matchSheet = getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCHES);
+  const matches = getSheetRecords_(matchSheet);
+  const index = matches.findIndex(function (m) { return String(m.matchId) === matchId; });
+  if (index < 0) return { deleted: false };
+  assertEventOwnership_(matches[index].eventId, ownerUserId);
+  const resultSheet = getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCH_RESULTS);
+  const values = resultSheet.getDataRange().getValues();
+  for (let i = values.length - 1; i >= 1; i -= 1) if (String(values[i][1]) === matchId) resultSheet.deleteRow(i + 1);
+  matchSheet.deleteRow(index + 2);
+  return { deleted: true, matchId: matchId };
+}
+
+function validateMatchPayload_(payload) {
+  if (!payload || typeof payload !== "object") throw new Error("半荘結果が送信されていません。");
+  if (!String(payload.ownerUserId || "").trim()) throw new Error("ユーザーIDが指定されていません。");
+  if (!String(payload.eventId || "").trim()) throw new Error("イベントIDが指定されていません。");
+  if (!Array.isArray(payload.results) || payload.results.length < 3) throw new Error("半荘結果が正しくありません。");
+}
+
+
+function apiSaveAdjustment_(payload) {
+  validateAdjustmentPayload_(payload);
+  assertEventOwnership_(payload.eventId, payload.ownerUserId);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const adjustmentSheet = getSheetByNameOrThrow_(
+      APP_CONFIG.SHEETS.ADJUSTMENTS
+    );
+    const entrySheet = getSheetByNameOrThrow_(
+      APP_CONFIG.SHEETS.ADJUSTMENT_ENTRIES
+    );
+    const adjustments = getSheetRecords_(adjustmentSheet);
+    const adjustmentId = String(
+      payload.preferredAdjustmentId || payload.adjustmentId || ""
+    ).trim() || createId_("adjustment");
+    const existingIndex = adjustments.findIndex(function (item) {
+      return String(item.adjustmentId) === adjustmentId;
+    });
+
+    if (existingIndex >= 0) {
+      assertEventOwnership_(
+        adjustments[existingIndex].eventId,
+        payload.ownerUserId
+      );
+    }
+
+    const now = getNowIso_();
+    const createdAt = existingIndex >= 0
+      ? toIsoString_(adjustments[existingIndex].createdAt)
+      : String(payload.createdAt || now);
+    const adjustedAt = String(
+      payload.adjustedAt || payload.createdAt || now
+    );
+    const row = [
+      adjustmentId,
+      String(payload.eventId),
+      String(payload.title || "").trim(),
+      adjustedAt,
+      createdAt,
+      now,
+    ];
+
+    if (existingIndex >= 0) {
+      adjustmentSheet
+        .getRange(existingIndex + 2, 1, 1, row.length)
+        .setValues([row]);
+    } else {
+      adjustmentSheet.appendRow(row);
+    }
+
+    const entryValues = entrySheet.getDataRange().getValues();
+    for (let index = entryValues.length - 1; index >= 1; index -= 1) {
+      if (String(entryValues[index][1]) === adjustmentId) {
+        entrySheet.deleteRow(index + 1);
+      }
+    }
+
+    payload.entries.forEach(function (entry) {
+      entrySheet.appendRow([
+        createId_("adjustmentEntry"),
+        adjustmentId,
+        String(entry.playerId),
+        Number(entry.points),
+        createdAt,
+        now,
+      ]);
+    });
+
+    return {
+      adjustmentId: adjustmentId,
+      eventId: String(payload.eventId),
+      title: String(payload.title || "").trim(),
+      entries: payload.entries.map(function (entry) {
+        return {
+          playerId: String(entry.playerId),
+          playerName: String(entry.playerName || ""),
+          points: Number(entry.points),
+        };
+      }),
+      adjustedAt: adjustedAt,
+      createdAt: createdAt,
+      updatedAt: now,
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function apiListAdjustments_(payload) {
+  const ownerUserId = String(
+    (payload && payload.ownerUserId) || ""
+  ).trim();
+
+  if (!ownerUserId) {
+    throw new Error("ユーザーIDが指定されていません。");
+  }
+
+  const eventIds = getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
+  )
+    .filter(function (event) {
+      return String(event.ownerUserId) === ownerUserId;
+    })
+    .map(function (event) {
+      return String(event.eventId);
+    });
+  const entries = getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.ADJUSTMENT_ENTRIES)
+  );
+
+  return getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.ADJUSTMENTS)
+  )
+    .filter(function (adjustment) {
+      return eventIds.indexOf(String(adjustment.eventId)) !== -1;
+    })
+    .map(function (adjustment) {
+      const adjustmentEntries = entries
+        .filter(function (entry) {
+          return String(entry.adjustmentId) ===
+            String(adjustment.adjustmentId);
+        })
+        .map(function (entry) {
+          return {
+            playerId: String(entry.playerId),
+            playerName: "",
+            points: Number(entry.points),
+          };
+        });
+
+      return {
+        adjustmentId: String(adjustment.adjustmentId),
+        eventId: String(adjustment.eventId),
+        title: String(adjustment.title || ""),
+        entries: adjustmentEntries,
+        adjustedAt: toIsoString_(adjustment.adjustedAt),
+        createdAt: toIsoString_(adjustment.createdAt),
+        updatedAt: toIsoString_(adjustment.updatedAt),
+      };
+    });
+}
+
+function apiDeleteAdjustment_(payload) {
+  const adjustmentId = String(
+    (payload && payload.adjustmentId) || ""
+  ).trim();
+  const ownerUserId = String(
+    (payload && payload.ownerUserId) || ""
+  ).trim();
+
+  if (!adjustmentId || !ownerUserId) {
+    throw new Error("削除対象が正しく指定されていません。");
+  }
+
+  const adjustmentSheet = getSheetByNameOrThrow_(
+    APP_CONFIG.SHEETS.ADJUSTMENTS
+  );
+  const adjustments = getSheetRecords_(adjustmentSheet);
+  const index = adjustments.findIndex(function (item) {
+    return String(item.adjustmentId) === adjustmentId;
+  });
+
+  if (index < 0) {
+    return { deleted: false };
+  }
+
+  assertEventOwnership_(adjustments[index].eventId, ownerUserId);
+
+  const entrySheet = getSheetByNameOrThrow_(
+    APP_CONFIG.SHEETS.ADJUSTMENT_ENTRIES
+  );
+  const entryValues = entrySheet.getDataRange().getValues();
+  for (let rowIndex = entryValues.length - 1; rowIndex >= 1; rowIndex -= 1) {
+    if (String(entryValues[rowIndex][1]) === adjustmentId) {
+      entrySheet.deleteRow(rowIndex + 1);
+    }
+  }
+
+  adjustmentSheet.deleteRow(index + 2);
+  return { deleted: true, adjustmentId: adjustmentId };
+}
+
+function validateAdjustmentPayload_(payload) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("ポイント増減が送信されていません。");
+  }
+
+  if (!String(payload.ownerUserId || "").trim()) {
+    throw new Error("ユーザーIDが指定されていません。");
+  }
+
+  if (!String(payload.eventId || "").trim()) {
+    throw new Error("イベントIDが指定されていません。");
+  }
+
+  if (!Array.isArray(payload.entries) || payload.entries.length === 0) {
+    throw new Error("ポイント増減の明細が正しくありません。");
+  }
+
+  const invalidEntry = payload.entries.some(function (entry) {
+    return !String(entry.playerId || "").trim() ||
+      !Number.isFinite(Number(entry.points));
+  });
+
+  if (invalidEntry) {
+    throw new Error("ポイント増減の明細が正しくありません。");
+  }
+
+  const total = payload.entries.reduce(function (sum, entry) {
+    return sum + Number(entry.points);
+  }, 0);
+
+  if (Math.abs(total) >= 0.0001) {
+    throw new Error("ポイント増減の合計を0にしてください。");
+  }
+}

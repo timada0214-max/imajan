@@ -1,0 +1,103 @@
+"use strict";
+
+/**
+ * 初回にGASエディタからこの関数を実行してください。
+ * 必要なシートと見出しを自動作成します。
+ */
+function setupSpreadsheet() {
+  const spreadsheet = getAppSpreadsheet_();
+  const results = SHEET_DEFINITIONS.map(function (definition) {
+    return setupSheet_(spreadsheet, definition);
+  });
+
+  SpreadsheetApp.flush();
+
+  console.log(
+    JSON.stringify({
+      spreadsheetId: spreadsheet.getId(),
+      spreadsheetName: spreadsheet.getName(),
+      sheets: results,
+    })
+  );
+
+  return {
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetName: spreadsheet.getName(),
+    sheets: results,
+  };
+}
+
+function setupSheet_(spreadsheet, definition) {
+  let sheet = spreadsheet.getSheetByName(definition.name);
+  const wasCreated = !sheet;
+
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(definition.name);
+  }
+
+  const requiredColumnCount = definition.headers.length;
+
+  if (sheet.getMaxColumns() < requiredColumnCount) {
+    sheet.insertColumnsAfter(
+      sheet.getMaxColumns(),
+      requiredColumnCount - sheet.getMaxColumns()
+    );
+  }
+
+  const currentHeaders = sheet
+    .getRange(1, 1, 1, requiredColumnCount)
+    .getDisplayValues()[0]
+    .map(normalizeHeader_);
+  const headersAreDifferent = definition.headers.some(function (
+    header,
+    index
+  ) {
+    return currentHeaders[index] !== header;
+  });
+
+  if (headersAreDifferent) {
+    const hasExistingHeaderValues = currentHeaders.some(Boolean);
+
+    if (hasExistingHeaderValues && sheet.getLastRow() > 1) {
+      throw new Error(
+        definition.name +
+          "シートには既存データがあり、見出しが想定と異なります。内容を確認してください。"
+      );
+    }
+
+    sheet
+      .getRange(1, 1, 1, requiredColumnCount)
+      .setValues([definition.headers]);
+  }
+
+  const headerRange = sheet.getRange(
+    1,
+    1,
+    1,
+    requiredColumnCount
+  );
+
+  headerRange
+    .setFontWeight("bold")
+    .setBackground("#14532d")
+    .setFontColor("#ffffff")
+    .setHorizontalAlignment("center");
+
+  sheet.setFrozenRows(1);
+  sheet.autoResizeColumns(1, requiredColumnCount);
+
+  if (sheet.getFilter()) {
+    sheet.getFilter().remove();
+  }
+
+  const filterRowCount = Math.max(sheet.getLastRow(), 2);
+  sheet
+    .getRange(1, 1, filterRowCount, requiredColumnCount)
+    .createFilter();
+
+  return {
+    name: definition.name,
+    created: wasCreated,
+    columns: requiredColumnCount,
+  };
+}

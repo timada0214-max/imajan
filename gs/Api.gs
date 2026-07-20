@@ -6,6 +6,132 @@
  */
 let activePerformanceContext_ = null;
 
+/**
+ * STEP12-5: Spreadsheet読込と画面レスポンスを短時間キャッシュします。
+ * CacheServiceは値ごとに容量上限があるため、保存できない場合は
+ * キャッシュを使わず通常処理へ自動的に戻ります。
+ */
+const CACHE_CONFIG_ = Object.freeze({
+  SHEET_TTL_SECONDS: 300,
+  EVENT_LIST_TTL_SECONDS: 300,
+  EVENT_DETAIL_TTL_SECONDS: 30,
+  MAX_VALUE_BYTES: 95000,
+});
+
+function getAppCache_() {
+  return CacheService.getScriptCache();
+}
+
+function buildCacheKey_(type, id) {
+  const spreadsheetId = getAppSpreadsheet_().getId();
+  return ["imajan", APP_CONFIG.API_VERSION, spreadsheetId, type, String(id || "all")]
+    .join(":");
+}
+
+function logCache_(label, status) {
+  const action = activePerformanceContext_
+    ? activePerformanceContext_.action
+    : "unknown";
+  console.log("[PERF][CACHE][" + action + "][" + label + "] " + status);
+}
+
+function readJsonCache_(key, label) {
+  try {
+    const cached = getAppCache_().get(key);
+    if (!cached) {
+      logCache_(label, "MISS");
+      return null;
+    }
+
+    const parsed = JSON.parse(cached);
+    logCache_(label, "HIT");
+    return parsed;
+  } catch (error) {
+    console.warn("[PERF][CACHE][" + label + "] READ_ERROR: " + error.message);
+    return null;
+  }
+}
+
+function writeJsonCache_(key, value, ttlSeconds, label) {
+  try {
+    const json = JSON.stringify(value);
+    const bytes = Utilities.newBlob(json).getBytes().length;
+
+    if (bytes > CACHE_CONFIG_.MAX_VALUE_BYTES) {
+      logCache_(label, "SKIP_TOO_LARGE:" + bytes + "bytes");
+      return false;
+    }
+
+    getAppCache_().put(key, json, ttlSeconds);
+    logCache_(label, "PUT:" + bytes + "bytes");
+    return true;
+  } catch (error) {
+    console.warn("[PERF][CACHE][" + label + "] WRITE_ERROR: " + error.message);
+    return false;
+  }
+}
+
+function removeCacheKeys_(keys, label) {
+  const uniqueKeys = keys.filter(function (key, index, array) {
+    return key && array.indexOf(key) === index;
+  });
+
+  if (uniqueKeys.length === 0) {
+    return;
+  }
+
+  try {
+    getAppCache_().removeAll(uniqueKeys);
+    logCache_(label, "INVALIDATE:" + uniqueKeys.length);
+  } catch (error) {
+    console.warn("[PERF][CACHE][" + label + "] INVALIDATE_ERROR: " + error.message);
+  }
+}
+
+function getCachedSheetRecordsWithPerf_(sheet) {
+  const sheetName = sheet.getName();
+  const key = buildCacheKey_("sheet", sheetName);
+  const cached = readJsonCache_(key, "sheet:" + sheetName);
+
+  if (cached !== null) {
+    return cached;
+  }
+
+  const records = getSheetRecordsWithPerf_(sheet);
+  writeJsonCache_(
+    key,
+    records,
+    CACHE_CONFIG_.SHEET_TTL_SECONDS,
+    "sheet:" + sheetName
+  );
+  return records;
+}
+
+function invalidateSheetCache_(sheetName) {
+  removeCacheKeys_([
+    buildCacheKey_("sheet", sheetName),
+  ], "sheet:" + sheetName);
+}
+
+function invalidateOwnerCaches_(ownerUserId, options) {
+  const normalizedOwnerUserId = String(ownerUserId || "").trim();
+  if (!normalizedOwnerUserId) {
+    return;
+  }
+
+  const settings = options || {};
+  const keys = [];
+
+  if (settings.eventList) {
+    keys.push(buildCacheKey_("eventList", normalizedOwnerUserId));
+  }
+  if (settings.eventDetail) {
+    keys.push(buildCacheKey_("eventDetail", normalizedOwnerUserId));
+  }
+
+  removeCacheKeys_(keys, "owner:" + normalizedOwnerUserId);
+}
+
 function startPerformanceContext_(action) {
   activePerformanceContext_ = {
     action: String(action || "unknown"),
@@ -375,7 +501,7 @@ function apiCreateEvent_(payload) {
     const sheet = getSheetByNameOrThrow_(
       APP_CONFIG.SHEETS.EVENTS
     );
-    const events = getSheetRecordsWithPerf_(sheet);
+    const events = getCachedSheetRecordsWithPerf_(sheet);
     const preferredEventId = String(
       payload.preferredEventId || ""
     ).trim();
@@ -439,6 +565,12 @@ function apiCreateEvent_(payload) {
       updatedAt,
     ]);
 
+    invalidateSheetCache_(APP_CONFIG.SHEETS.EVENTS);
+    invalidateOwnerCaches_(payload.ownerUserId, {
+      eventList: true,
+      eventDetail: true,
+    });
+
     return {
       eventId: eventId,
       ownerUserId: String(payload.ownerUserId),
@@ -484,12 +616,18 @@ function apiListEvents_(payload) {
     throw ownerError;
   }
 
+  const cacheKey = buildCacheKey_("eventList", ownerUserId);
+  const cachedEvents = readJsonCache_(cacheKey, "eventList");
+  if (cachedEvents !== null) {
+    return cachedEvents;
+  }
+
   const sheet = getSheetByNameOrThrow_(
     APP_CONFIG.SHEETS.EVENTS
   );
   const matchCountMap = getMatchCountMap_();
 
-  return getSheetRecordsWithPerf_(sheet)
+  const events = getCachedSheetRecordsWithPerf_(sheet)
     .filter(function (event) {
       return String(event.ownerUserId) === ownerUserId;
     })
@@ -505,6 +643,14 @@ function apiListEvents_(payload) {
         new Date(a.updatedAt).getTime()
       );
     });
+
+  writeJsonCache_(
+    cacheKey,
+    events,
+    CACHE_CONFIG_.EVENT_LIST_TTL_SECONDS,
+    "eventList"
+  );
+  return events;
 }
 
 function validateEventPayload_(payload) {
@@ -736,7 +882,7 @@ function apiCreatePlayer_(payload) {
     const sheet = getSheetByNameOrThrow_(
       APP_CONFIG.SHEETS.PLAYERS
     );
-    const players = getSheetRecordsWithPerf_(sheet);
+    const players = getCachedSheetRecordsWithPerf_(sheet);
     markPerformance_("READ_PLAYERS");
     const preferredPlayerId = String(
       payload.preferredPlayerId || ""
@@ -800,6 +946,10 @@ function apiCreatePlayer_(payload) {
       updatedAt,
     ]);
     markPerformance_("WRITE_PLAYER");
+    invalidateSheetCache_(APP_CONFIG.SHEETS.PLAYERS);
+    invalidateOwnerCaches_(ownerUserId, {
+      eventDetail: true,
+    });
 
     return attachPerformance_({
       playerId: playerId,
@@ -832,7 +982,7 @@ function apiListPlayers_(payload) {
     throw ownerError;
   }
 
-  const ownedEventIds = getSheetRecordsWithPerf_(
+  const ownedEventIds = getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
   )
     .filter(function (event) {
@@ -850,7 +1000,7 @@ function apiListPlayers_(payload) {
     throw ownershipError;
   }
 
-  return getSheetRecordsWithPerf_(
+  return getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS)
   )
     .filter(function (player) {
@@ -916,7 +1066,7 @@ function validatePlayerPayload_(payload) {
 }
 
 function assertEventOwnership_(eventId, ownerUserId) {
-  const event = getSheetRecordsWithPerf_(
+  const event = getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
   ).find(function (item) {
     return String(item.eventId) === String(eventId);
@@ -1039,6 +1189,10 @@ function apiSaveMatch_(payload) {
       now
     );
     markPerformance_("WRITE_MATCH_RESULTS");
+    invalidateOwnerCaches_(payload.ownerUserId, {
+      eventList: true,
+      eventDetail: true,
+    });
 
     markPerformance_("BUILD_RESPONSE");
     return attachPerformance_({
@@ -1222,6 +1376,10 @@ function apiDeleteMatch_(payload) {
   );
   deleteMatchResultRows_(resultSheet, matchId);
   matchSheet.deleteRow(index + 2);
+  invalidateOwnerCaches_(ownerUserId, {
+    eventList: true,
+    eventDetail: true,
+  });
 
   return { deleted: true, matchId: matchId };
 }
@@ -1263,7 +1421,7 @@ function validateMatchPayload_(payload) {
 function getOwnedEventRecord_(eventId, ownerUserId) {
   const normalizedEventId = String(eventId || "").trim();
   const normalizedOwnerUserId = String(ownerUserId || "").trim();
-  const event = getSheetRecordsWithPerf_(
+  const event = getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
   ).find(function (item) {
     return String(item.eventId) === normalizedEventId;
@@ -1307,7 +1465,7 @@ function buildEventRuleFromRecord_(event) {
 
 function calculateMatchResultsForEvent_(payloadResults, event, eventRule) {
   const eventId = String(event.eventId);
-  const eventPlayers = getSheetRecordsWithPerf_(
+  const eventPlayers = getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS)
   ).filter(function (player) {
     return String(player.eventId) === eventId;
@@ -1571,6 +1729,10 @@ function apiSaveAdjustment_(payload) {
       ]);
     });
 
+    invalidateOwnerCaches_(payload.ownerUserId, {
+      eventDetail: true,
+    });
+
     return {
       adjustmentId: adjustmentId,
       eventId: String(payload.eventId),
@@ -1663,7 +1825,14 @@ function apiGetEventDetailData_(payload) {
     throw ownerError;
   }
 
-  const events = getSheetRecordsWithPerf_(
+  const cacheKey = buildCacheKey_("eventDetail", ownerUserId);
+  const cachedDetail = readJsonCache_(cacheKey, "eventDetail");
+  if (cachedDetail !== null) {
+    markPerformance_("CACHE_HIT_EVENT_DETAIL");
+    return attachPerformance_(cachedDetail);
+  }
+
+  const events = getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
   ).filter(function (event) {
     return String(event.ownerUserId) === ownerUserId;
@@ -1678,7 +1847,7 @@ function apiGetEventDetailData_(payload) {
     eventMap[eventId] = event;
   });
 
-  const playerRecords = getSheetRecordsWithPerf_(
+  const playerRecords = getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS)
   ).filter(function (player) {
     return Boolean(ownedEventIdSet[String(player.eventId)]);
@@ -1822,11 +1991,18 @@ function apiGetEventDetailData_(payload) {
   });
 
   markPerformance_("BUILD_EVENT_DETAIL_RESPONSE");
-  return attachPerformance_({
+  const detail = {
     players: players,
     matches: matches,
     adjustments: adjustments,
-  });
+  };
+  writeJsonCache_(
+    cacheKey,
+    detail,
+    CACHE_CONFIG_.EVENT_DETAIL_TTL_SECONDS,
+    "eventDetail"
+  );
+  return attachPerformance_(detail);
 }
 
 function apiDeleteAdjustment_(payload) {
@@ -1866,6 +2042,9 @@ function apiDeleteAdjustment_(payload) {
   }
 
   adjustmentSheet.deleteRow(index + 2);
+  invalidateOwnerCaches_(ownerUserId, {
+    eventDetail: true,
+  });
   return { deleted: true, adjustmentId: adjustmentId };
 }
 

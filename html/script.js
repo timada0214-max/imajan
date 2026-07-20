@@ -2898,18 +2898,22 @@ async function handleAdjustmentDelete() {
 }
 
 function getMatchRule() {
-  if (currentEvent.gameType === "sanma") {
-    return {
-      playerCount: 3,
-      requiredPointTotal: 105000,
-      returnPoint: 35000,
-    };
-  }
+  const playerCount = currentEvent.gameType === "sanma" ? 3 : 4;
+  const defaultStartingPoints =
+    currentEvent.gameType === "sanma" ? 35000 : 25000;
+  const defaultReturnPoints =
+    currentEvent.gameType === "sanma" ? 35000 : 30000;
+  const startingPoints = Number(
+    currentEvent.startingPoints || defaultStartingPoints,
+  );
+  const returnPoints = Number(
+    currentEvent.returnPoints || defaultReturnPoints,
+  );
 
   return {
-    playerCount: 4,
-    requiredPointTotal: 100000,
-    returnPoint: 30000,
+    playerCount,
+    requiredPointTotal: startingPoints * playerCount,
+    returnPoint: returnPoints,
   };
 }
 

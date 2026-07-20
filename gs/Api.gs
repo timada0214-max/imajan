@@ -788,61 +788,418 @@ function serializePlayerRecord_(player) {
 
 function apiSaveMatch_(payload) {
   validateMatchPayload_(payload);
-  assertEventOwnership_(payload.eventId, payload.ownerUserId);
-  const lock = LockService.getScriptLock(); lock.waitLock(10000);
+
+  const event = getOwnedEventRecord_(
+    payload.eventId,
+    payload.ownerUserId
+  );
+  const eventRule = buildEventRuleFromRecord_(event);
+  const calculatedResults = calculateMatchResultsForEvent_(
+    payload.results,
+    event,
+    eventRule
+  );
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
   try {
-    const matchSheet = getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCHES);
-    const resultSheet = getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCH_RESULTS);
+    const matchSheet = getSheetByNameOrThrow_(
+      APP_CONFIG.SHEETS.MATCHES
+    );
+    const resultSheet = getSheetByNameOrThrow_(
+      APP_CONFIG.SHEETS.MATCH_RESULTS
+    );
     const matches = getSheetRecords_(matchSheet);
-    const matchId = String(payload.preferredMatchId || payload.matchId || "").trim() || createId_("match");
-    const existingIndex = matches.findIndex(function (m) { return String(m.matchId) === matchId; });
-    const now = getNowIso_();
-    const createdAt = existingIndex >= 0 ? toIsoString_(matches[existingIndex].createdAt) : String(payload.createdAt || now);
-    const playedAt = String(payload.playedAt || payload.createdAt || now);
-    const row = [matchId, String(payload.eventId), String(payload.gameType), playedAt, createdAt, now];
-    if (existingIndex >= 0) matchSheet.getRange(existingIndex + 2, 1, 1, row.length).setValues([row]); else matchSheet.appendRow(row);
-    const values = resultSheet.getDataRange().getValues();
-    for (let i = values.length - 1; i >= 1; i -= 1) if (String(values[i][1]) === matchId) resultSheet.deleteRow(i + 1);
-    (payload.results || []).forEach(function (result, index) {
-      resultSheet.appendRow([createId_("matchResult"), matchId, String(result.playerId), Number(result.points), Number(result.rank), Number(result.rankPoint), Number(result.finalScore), Number(index + 1), createdAt, now]);
+    const matchId = String(
+      payload.preferredMatchId || payload.matchId || ""
+    ).trim() || createId_("match");
+    const existingIndex = matches.findIndex(function (match) {
+      return String(match.matchId) === matchId;
     });
-    return { matchId: matchId, eventId: String(payload.eventId), gameType: String(payload.gameType), umaPreset: String(payload.umaPreset || ""), entryOrderPlayerIds: payload.entryOrderPlayerIds || [], tieBreakOrderPlayerIds: payload.tieBreakOrderPlayerIds || [], results: payload.results || [], playedAt: playedAt, createdAt: createdAt, updatedAt: now };
-  } finally { lock.releaseLock(); }
+
+    if (
+      existingIndex >= 0 &&
+      String(matches[existingIndex].eventId) !== String(event.eventId)
+    ) {
+      const conflictError = new Error(
+        "同じ半荘IDが別のイベントに使用されています。"
+      );
+      conflictError.code = "MATCH_ID_CONFLICT";
+      throw conflictError;
+    }
+
+    const now = getNowIso_();
+    const createdAt = existingIndex >= 0
+      ? toIsoString_(matches[existingIndex].createdAt)
+      : normalizeOptionalIso_(payload.createdAt) || now;
+    const playedAt =
+      normalizeOptionalIso_(payload.playedAt) || createdAt;
+    const gameType = String(event.gameType);
+    const row = [
+      matchId,
+      String(event.eventId),
+      gameType,
+      playedAt,
+      createdAt,
+      now,
+    ];
+
+    if (existingIndex >= 0) {
+      matchSheet
+        .getRange(existingIndex + 2, 1, 1, row.length)
+        .setValues([row]);
+    } else {
+      matchSheet.appendRow(row);
+    }
+
+    deleteMatchResultRows_(resultSheet, matchId);
+
+    calculatedResults.forEach(function (result, index) {
+      resultSheet.appendRow([
+        createId_("matchResult"),
+        matchId,
+        result.playerId,
+        result.rawPoints,
+        result.rank,
+        result.rankScore,
+        result.finalScore,
+        index + 1,
+        createdAt,
+        now,
+      ]);
+    });
+
+    return {
+      matchId: matchId,
+      eventId: String(event.eventId),
+      gameType: gameType,
+      ruleMode: String(event.ruleMode || "preset"),
+      rulePreset: String(event.rulePreset || ""),
+      umaPreset: String(event.rulePreset || ""),
+      entryOrderPlayerIds: Array.isArray(payload.entryOrderPlayerIds)
+        ? payload.entryOrderPlayerIds.map(String)
+        : [],
+      tieBreakOrderPlayerIds: Array.isArray(
+        payload.tieBreakOrderPlayerIds
+      )
+        ? payload.tieBreakOrderPlayerIds.map(String)
+        : [],
+      results: calculatedResults.map(function (result) {
+        return {
+          playerId: result.playerId,
+          playerName: result.playerName,
+          points: result.rawPoints,
+          rank: result.rank,
+          rankPoint: result.rankScore,
+          finalScore: result.finalScore,
+        };
+      }),
+      playedAt: playedAt,
+      createdAt: createdAt,
+      updatedAt: now,
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function apiListMatches_(payload) {
-  const ownerUserId = String((payload && payload.ownerUserId) || "").trim();
-  if (!ownerUserId) throw new Error("ユーザーIDが指定されていません。");
-  const eventIds = getSheetRecords_(getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)).filter(function (event) { return String(event.ownerUserId) === ownerUserId; }).map(function (event) { return String(event.eventId); });
-  const results = getSheetRecords_(getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCH_RESULTS));
-  return getSheetRecords_(getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCHES)).filter(function (match) { return eventIds.indexOf(String(match.eventId)) !== -1; }).map(function (match) {
-    const matchResults = results.filter(function (r) { return String(r.matchId) === String(match.matchId); }).sort(function (a,b) { return Number(a.rank) - Number(b.rank); }).map(function (r) { return { playerId: String(r.playerId), playerName: "", points: Number(r.rawScore), rank: Number(r.rank), rankPoint: Number(r.rankScore), finalScore: Number(r.finalScore) }; });
-    return { matchId: String(match.matchId), eventId: String(match.eventId), gameType: String(match.gameType), umaPreset: "", entryOrderPlayerIds: matchResults.map(function(r){return r.playerId;}), tieBreakOrderPlayerIds: [], results: matchResults, playedAt: toIsoString_(match.playedAt), createdAt: toIsoString_(match.createdAt), updatedAt: toIsoString_(match.updatedAt) };
+  const ownerUserId = String(
+    (payload && payload.ownerUserId) || ""
+  ).trim();
+
+  if (!ownerUserId) {
+    const ownerError = new Error(
+      "ユーザーIDが指定されていません。"
+    );
+    ownerError.code = "INVALID_OWNER_USER_ID";
+    throw ownerError;
+  }
+
+  const events = getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
+  ).filter(function (event) {
+    return String(event.ownerUserId) === ownerUserId;
   });
+  const eventMap = {};
+
+  events.forEach(function (event) {
+    eventMap[String(event.eventId)] = event;
+  });
+
+  const playerMap = {};
+  getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS)
+  ).forEach(function (player) {
+    playerMap[String(player.playerId)] = String(player.name || "");
+  });
+
+  const results = getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCH_RESULTS)
+  );
+
+  return getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCHES)
+  )
+    .filter(function (match) {
+      return Boolean(eventMap[String(match.eventId)]);
+    })
+    .map(function (match) {
+      const event = eventMap[String(match.eventId)];
+      const matchResults = results
+        .filter(function (result) {
+          return String(result.matchId) === String(match.matchId);
+        })
+        .sort(function (a, b) {
+          return Number(a.rank) - Number(b.rank);
+        })
+        .map(function (result) {
+          return {
+            playerId: String(result.playerId),
+            playerName: playerMap[String(result.playerId)] || "",
+            points: Number(result.rawScore),
+            rank: Number(result.rank),
+            rankPoint: Number(result.rankScore),
+            finalScore: Number(result.finalScore),
+          };
+        });
+
+      return {
+        matchId: String(match.matchId),
+        eventId: String(match.eventId),
+        gameType: String(match.gameType),
+        ruleMode: String(event.ruleMode || "preset"),
+        rulePreset: String(event.rulePreset || ""),
+        umaPreset: String(event.rulePreset || ""),
+        entryOrderPlayerIds: matchResults.map(function (result) {
+          return result.playerId;
+        }),
+        tieBreakOrderPlayerIds: [],
+        results: matchResults,
+        playedAt: toIsoString_(match.playedAt),
+        createdAt: toIsoString_(match.createdAt),
+        updatedAt: toIsoString_(match.updatedAt),
+      };
+    });
 }
 
 function apiDeleteMatch_(payload) {
-  const matchId = String((payload && payload.matchId) || "").trim();
-  const ownerUserId = String((payload && payload.ownerUserId) || "").trim();
-  const matchSheet = getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCHES);
+  const matchId = String(
+    (payload && payload.matchId) || ""
+  ).trim();
+  const ownerUserId = String(
+    (payload && payload.ownerUserId) || ""
+  ).trim();
+
+  if (!matchId || !ownerUserId) {
+    const targetError = new Error(
+      "削除対象が正しく指定されていません。"
+    );
+    targetError.code = "INVALID_DELETE_TARGET";
+    throw targetError;
+  }
+
+  const matchSheet = getSheetByNameOrThrow_(
+    APP_CONFIG.SHEETS.MATCHES
+  );
   const matches = getSheetRecords_(matchSheet);
-  const index = matches.findIndex(function (m) { return String(m.matchId) === matchId; });
-  if (index < 0) return { deleted: false };
+  const index = matches.findIndex(function (match) {
+    return String(match.matchId) === matchId;
+  });
+
+  if (index < 0) {
+    return { deleted: false };
+  }
+
   assertEventOwnership_(matches[index].eventId, ownerUserId);
-  const resultSheet = getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCH_RESULTS);
-  const values = resultSheet.getDataRange().getValues();
-  for (let i = values.length - 1; i >= 1; i -= 1) if (String(values[i][1]) === matchId) resultSheet.deleteRow(i + 1);
+
+  const resultSheet = getSheetByNameOrThrow_(
+    APP_CONFIG.SHEETS.MATCH_RESULTS
+  );
+  deleteMatchResultRows_(resultSheet, matchId);
   matchSheet.deleteRow(index + 2);
+
   return { deleted: true, matchId: matchId };
 }
 
 function validateMatchPayload_(payload) {
-  if (!payload || typeof payload !== "object") throw new Error("半荘結果が送信されていません。");
-  if (!String(payload.ownerUserId || "").trim()) throw new Error("ユーザーIDが指定されていません。");
-  if (!String(payload.eventId || "").trim()) throw new Error("イベントIDが指定されていません。");
-  if (!Array.isArray(payload.results) || payload.results.length < 3) throw new Error("半荘結果が正しくありません。");
+  if (!payload || typeof payload !== "object") {
+    const payloadError = new Error(
+      "半荘結果が送信されていません。"
+    );
+    payloadError.code = "INVALID_MATCH_PAYLOAD";
+    throw payloadError;
+  }
+
+  if (!String(payload.ownerUserId || "").trim()) {
+    const ownerError = new Error(
+      "ユーザーIDが指定されていません。"
+    );
+    ownerError.code = "INVALID_OWNER_USER_ID";
+    throw ownerError;
+  }
+
+  if (!String(payload.eventId || "").trim()) {
+    const eventError = new Error(
+      "イベントIDが指定されていません。"
+    );
+    eventError.code = "INVALID_EVENT_ID";
+    throw eventError;
+  }
+
+  if (!Array.isArray(payload.results)) {
+    const resultError = new Error(
+      "半荘結果が正しくありません。"
+    );
+    resultError.code = "INVALID_MATCH_RESULTS";
+    throw resultError;
+  }
 }
 
+function getOwnedEventRecord_(eventId, ownerUserId) {
+  const normalizedEventId = String(eventId || "").trim();
+  const normalizedOwnerUserId = String(ownerUserId || "").trim();
+  const event = getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
+  ).find(function (item) {
+    return String(item.eventId) === normalizedEventId;
+  });
+
+  if (!event) {
+    const notFoundError = new Error(
+      "指定されたイベントが見つかりません。"
+    );
+    notFoundError.code = "EVENT_NOT_FOUND";
+    throw notFoundError;
+  }
+
+  if (String(event.ownerUserId) !== normalizedOwnerUserId) {
+    const accessError = new Error(
+      "指定されたイベントを操作する権限がありません。"
+    );
+    accessError.code = "EVENT_ACCESS_DENIED";
+    throw accessError;
+  }
+
+  return event;
+}
+
+function buildEventRuleFromRecord_(event) {
+  const gameType = String(event.gameType || "");
+  const playerCount = gameType === "sanma" ? 3 : 4;
+
+  return normalizeMahjongRule_({
+    playerCount: playerCount,
+    startingPoints: event.startingPoints,
+    returnPoints: event.returnPoints,
+    umaByRank: [
+      event.uma1,
+      event.uma2,
+      event.uma3,
+      event.uma4,
+    ].slice(0, playerCount),
+  });
+}
+
+function calculateMatchResultsForEvent_(payloadResults, event, eventRule) {
+  const eventId = String(event.eventId);
+  const eventPlayers = getSheetRecords_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS)
+  ).filter(function (player) {
+    return String(player.eventId) === eventId;
+  });
+  const playerMap = {};
+
+  eventPlayers.forEach(function (player) {
+    playerMap[String(player.playerId)] = player;
+  });
+
+  const rawResults = payloadResults.map(function (result) {
+    const playerId = String(
+      (result && result.playerId) || ""
+    ).trim();
+
+    if (!playerMap[playerId]) {
+      const playerError = new Error(
+        "イベントに登録されていないプレイヤーが含まれています。"
+      );
+      playerError.code = "PLAYER_NOT_IN_EVENT";
+      throw playerError;
+    }
+
+    return {
+      playerId: playerId,
+      rawPoints: Number(
+        result && result.points !== undefined
+          ? result.points
+          : result && result.rawPoints
+      ),
+      rank: Number(result && result.rank),
+    };
+  });
+
+  return calculateMatchScores_(rawResults, eventRule).map(function (result) {
+    return {
+      playerId: result.playerId,
+      playerName: String(playerMap[result.playerId].name || ""),
+      rawPoints: result.rawPoints,
+      rank: result.rank,
+      rankScore: result.rankScore,
+      finalScore: result.finalScore,
+    };
+  });
+}
+
+function deleteMatchResultRows_(resultSheet, matchId) {
+  const values = resultSheet.getDataRange().getValues();
+
+  for (let index = values.length - 1; index >= 1; index -= 1) {
+    if (String(values[index][1]) === String(matchId)) {
+      resultSheet.deleteRow(index + 1);
+    }
+  }
+}
+
+function testMatchRuleCalculationStep10_4() {
+  const event = {
+    eventId: "event-test",
+    gameType: "yonma",
+    startingPoints: 25000,
+    returnPoints: 30000,
+    uma1: 30,
+    uma2: 10,
+    uma3: -10,
+    uma4: -30,
+  };
+  const rule = buildEventRuleFromRecord_(event);
+  const results = calculateMatchScores_([
+    { playerId: "player-1", rawPoints: 41000, rank: 1 },
+    { playerId: "player-2", rawPoints: 30000, rank: 2 },
+    { playerId: "player-3", rawPoints: 20000, rank: 3 },
+    { playerId: "player-4", rawPoints: 9000, rank: 4 },
+  ], rule);
+
+  const expectedScores = [61, 10, -20, -51];
+  results.forEach(function (result, index) {
+    if (result.finalScore !== expectedScores[index]) {
+      throw new Error(
+        "STEP10-4テスト失敗: finalScoreが一致しません。"
+      );
+    }
+  });
+
+  console.log(JSON.stringify({
+    success: true,
+    message: "STEP10-4の半荘計算テストは成功しました。",
+    results: results,
+  }));
+
+  return {
+    success: true,
+    results: results,
+  };
+}
 
 function apiSaveAdjustment_(payload) {
   validateAdjustmentPayload_(payload);

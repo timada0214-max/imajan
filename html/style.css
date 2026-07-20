@@ -2650,3 +2650,29 @@ select:focus {
     grid-template-columns: minmax(0, 1fr) minmax(150px, 172px);
   }
 }
+
+/* v1.0A 実戦フィードバック */
+.page-content { padding-top: 20px; padding-bottom: 104px; }
+.form-section, .event-summary-card, .player-standings-section, .match-history-section, .adjustment-history-section { padding-top: 24px; padding-bottom: 24px; }
+.event-form { gap: 20px; }
+.section-heading { margin-bottom: 18px; }
+.section-heading p { margin-top: 6px; }
+.match-entry-list { gap: 14px; }
+.match-entry-row { padding: 18px 16px; }
+.match-entry-fields { gap: 14px; }
+.match-history-card, .adjustment-history-card { padding: 16px; }
+.match-history-results, .adjustment-history-results { gap: 8px; }
+.player-finish-button { margin-top: 10px; }
+.match-point-control { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:8px; align-items:center; }
+.match-sign-buttons { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.match-sign-button { min-width:42px; min-height:46px; border:1px solid #cdd9d1; border-radius:12px; background:#fff; color:#53625a; font-size:20px; font-weight:800; }
+.match-sign-button.is-active { border-color:#25643b; background:#dcf8e5; color:#205b35; box-shadow:inset 0 0 0 1px #25643b; }
+.match-point-unit { white-space:nowrap; color:#6f7b74; font-size:13px; font-weight:700; }
+.match-point-converted { display:block; margin-top:6px; text-align:right; color:#66736b; font-size:13px; }
+.standings-score, .match-history-result > :last-child, .adjustment-history-result strong { font-variant-numeric:tabular-nums; }
+@media (max-width:390px) {
+  .page-content { padding-left:16px; padding-right:16px; }
+  .form-section, .event-summary-card, .player-standings-section, .match-history-section, .adjustment-history-section { padding-left:18px; padding-right:18px; }
+  .match-point-control { grid-template-columns:auto minmax(0,1fr); }
+  .match-point-unit { grid-column:2; }
+}

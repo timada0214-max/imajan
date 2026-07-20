@@ -128,7 +128,7 @@
               こんにちは、<br />
               <span id="welcome-nickname"></span>さん
             </h1>
-            <p>イベントを選ぶか、新しいイベントを作成してください。</p>
+            <p>対局を選ぶか、新しい対局を作成してください。</p>
           </section>
 
           <section class="home-menu" aria-label="メインメニュー">
@@ -136,8 +136,8 @@
               <span class="menu-icon" aria-hidden="true">☷</span>
 
               <span class="menu-text">
-                <strong>イベント一覧</strong>
-                <small>開催中・過去のイベントを確認</small>
+                <strong>対局一覧</strong>
+                <small>開催中・過去の対局を確認</small>
               </span>
 
               <span class="menu-arrow" aria-hidden="true">›</span>
@@ -151,7 +151,7 @@
               <span class="menu-icon" aria-hidden="true">＋</span>
 
               <span class="menu-text">
-                <strong>新しいイベントを作成</strong>
+                <strong>新しい対局を作成</strong>
                 <small>リーグ戦や当日対戦を始める</small>
               </span>
 
@@ -215,8 +215,8 @@
           </button>
 
           <div class="page-heading">
-            <h1>イベント一覧</h1>
-            <p>開催中・過去のイベント</p>
+            <h1>対局一覧</h1>
+            <p>開催中・過去の対局</p>
           </div>
 
           <button
@@ -229,7 +229,7 @@
         </header>
 
         <div class="page-content">
-          <div class="segment-control" role="tablist" aria-label="イベント区分">
+          <div class="segment-control" role="tablist" aria-label="対局区分">
             <button
               id="active-events-tab"
               class="segment-button is-active"
@@ -259,16 +259,16 @@
 
           <section id="event-empty-state" class="empty-state" hidden>
             <div class="empty-state-icon" aria-hidden="true">☷</div>
-            <h2 id="empty-state-title">開催中のイベントはありません</h2>
+            <h2 id="empty-state-title">開催中の対局はありません</h2>
             <p id="empty-state-description">
-              新しいイベントを作成すると、ここに表示されます。
+              新しい対局を作成すると、ここに表示されます。
             </p>
             <button
               id="empty-state-create-button"
               class="primary-button compact-button"
               type="button"
             >
-              新しいイベントを作成
+              新しい対局を作成
             </button>
           </section>
         </div>
@@ -280,13 +280,13 @@
             id="event-create-back-button"
             class="icon-button"
             type="button"
-            aria-label="イベント一覧へ戻る"
+            aria-label="対局一覧へ戻る"
           >
             ‹
           </button>
 
           <div class="page-heading">
-            <h1>イベント作成</h1>
+            <h1>対局作成</h1>
             <p>対戦の基本設定を登録</p>
           </div>
 
@@ -298,11 +298,11 @@
             <section class="form-section">
               <div class="section-heading">
                 <h2>基本情報</h2>
-                <p>イベント名と開催形式を設定します。</p>
+                <p>対局名と開催形式を設定します。</p>
               </div>
 
               <div class="form-group">
-                <label for="event-name">イベント名</label>
+                <label for="event-name">対局名</label>
                 <input
                   id="event-name"
                   name="eventName"
@@ -314,7 +314,7 @@
               </div>
 
               <fieldset class="choice-fieldset">
-                <legend>イベント形式</legend>
+                <legend>対局形式</legend>
 
                 <div class="choice-grid">
                   <label class="choice-card">
@@ -428,7 +428,7 @@
               class="primary-button"
               type="submit"
             >
-              イベントを作成
+              対局を作成
             </button>
           </form>
         </div>
@@ -441,14 +441,14 @@
             id="event-detail-back-button"
             class="icon-button"
             type="button"
-            aria-label="イベント一覧へ戻る"
+            aria-label="対局一覧へ戻る"
           >
             ‹
           </button>
 
           <div class="page-heading">
-            <h1 id="event-detail-title">イベント詳細</h1>
-            <p id="event-detail-caption">イベント情報</p>
+            <h1 id="event-detail-title">対局詳細</h1>
+            <p id="event-detail-caption">対局情報</p>
           </div>
 
           <span class="header-spacer" aria-hidden="true"></span>
@@ -458,7 +458,7 @@
           <section class="event-summary-card">
             <div>
               <p class="event-summary-label">イベント</p>
-              <h2 id="event-summary-name">イベント名</h2>
+              <h2 id="event-summary-name">対局名</h2>
             </div>
 
             <div class="event-summary-tags">
@@ -630,14 +630,14 @@
             id="player-add-back-button"
             class="icon-button"
             type="button"
-            aria-label="イベント詳細へ戻る"
+            aria-label="対局詳細へ戻る"
           >
             ‹
           </button>
 
           <div class="page-heading">
             <h1>プレイヤー追加</h1>
-            <p>参加者をイベントへ登録</p>
+            <p>参加者を対局へ登録</p>
           </div>
 
           <span class="header-spacer" aria-hidden="true"></span>
@@ -652,7 +652,7 @@
             >
               <div class="section-heading">
                 <h2>登録済みプレイヤー</h2>
-                <p>現在このイベントに参加しているプレイヤーです。</p>
+                <p>現在この対局に参加しているプレイヤーです。</p>
               </div>
 
               <div
@@ -669,7 +669,7 @@
               <div class="section-heading">
                 <h2>よく使うプレイヤー</h2>
                 <p>
-                  名前をタップすると、このイベントへすぐ追加されます。
+                  名前をタップすると、この対局へすぐ追加されます。
                 </p>
               </div>
 
@@ -712,6 +712,13 @@
             >
               プレイヤーを追加
             </button>
+            <button
+              id="player-finish-button"
+              class="secondary-button player-finish-button"
+              type="button"
+            >
+              参加プレイヤーの追加を完了
+            </button>
           </form>
         </div>
       </section>
@@ -723,7 +730,7 @@
             id="match-create-back-button"
             class="icon-button"
             type="button"
-            aria-label="イベント詳細へ戻る"
+            aria-label="対局詳細へ戻る"
           >
             ‹
           </button>
@@ -842,7 +849,7 @@
             id="adjustment-create-back-button"
             class="icon-button"
             type="button"
-            aria-label="イベント詳細へ戻る"
+            aria-label="対局詳細へ戻る"
           >
             ‹
           </button>

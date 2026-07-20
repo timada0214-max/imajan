@@ -773,7 +773,7 @@ async function showEventListScreen() {
   eventListScreen.hidden = false;
 
   renderEventList();
-  showLoading("イベントを読み込んでいます…");
+  showLoading("対局を読み込んでいます…");
 
   try {
     await loadEventsFromSheet();
@@ -783,7 +783,7 @@ async function showEventListScreen() {
 
     eventEmptyState.hidden = false;
     emptyStateTitle.textContent =
-      "イベントを読み込めませんでした";
+      "対局を読み込めませんでした";
     emptyStateDescription.textContent =
       error.message ||
       "通信状態を確認して、もう一度お試しください。";
@@ -1340,7 +1340,7 @@ async function loadPlayersFromSheet({ force = false } = {}) {
 
 async function createPlayerOnSheet(name) {
   if (!currentUser || !currentEvent) {
-    throw new Error("イベント情報を確認できませんでした。");
+    throw new Error("対局情報を確認できませんでした。");
   }
 
   const eventPlayers = getLocalPlayers().filter(
@@ -1387,7 +1387,7 @@ function createEventCard(event) {
   `;
 
   button.querySelector(".event-title").textContent =
-    event.name || "名称未設定のイベント";
+    event.name || "名称未設定の対局";
 
   button.addEventListener("click", () => {
     showEventDetailScreen(event);
@@ -1428,15 +1428,15 @@ function renderEventList() {
 
     if (currentEventStatus === "completed") {
       emptyStateTitle.textContent =
-        "終了したイベントはありません";
+        "終了した対局はありません";
       emptyStateDescription.textContent =
-        "イベントを終了すると、ここに表示されます。";
+        "対局を終了すると、ここに表示されます。";
       emptyStateCreateButton.hidden = true;
     } else {
       emptyStateTitle.textContent =
-        "開催中のイベントはありません";
+        "開催中の対局はありません";
       emptyStateDescription.textContent =
-        "新しいイベントを作成すると、ここに表示されます。";
+        "新しい対局を作成すると、ここに表示されます。";
       emptyStateCreateButton.hidden = false;
     }
 
@@ -2345,8 +2345,11 @@ function renderMatchHistory(matches) {
         <span>${formatSignedScore(result.finalScore)}</span>
       `;
 
+      const currentPlayer = getLocalPlayers().find(
+        (player) => String(player.playerId) === String(result.playerId),
+      );
       row.querySelector(".match-history-player").textContent =
-        result.playerName;
+        currentPlayer?.name || result.playerName || "不明なプレイヤー";
 
       resultList.appendChild(row);
     });
@@ -3143,17 +3146,17 @@ function renderMatchEntryRows(
           </select>
         </label>
         <label>
-          最終持ち点
-          <input
-            class="match-point-input"
-            type="number"
-            inputmode="numeric"
-            step="100"
-            placeholder="例：42000"
-          />
-          <small class="auto-calculated-note" hidden>
-            残り点数を自動入力
-          </small>
+          最終持ち点（100点単位）
+          <div class="match-point-control">
+            <div class="match-sign-buttons" role="group" aria-label="符号">
+              <button class="match-sign-button is-active" type="button" data-sign="1" aria-pressed="true">＋</button>
+              <button class="match-sign-button" type="button" data-sign="-1" aria-pressed="false">−</button>
+            </div>
+            <input class="match-point-input" type="number" inputmode="numeric" min="0" step="1" placeholder="例：420" />
+            <span class="match-point-unit">×100点</span>
+          </div>
+          <small class="match-point-converted">0点</small>
+          <small class="auto-calculated-note" hidden>残り点数を自動入力</small>
         </label>
       </div>
     `;
@@ -3187,9 +3190,26 @@ function renderMatchEntryRows(
 
     const existingResult = resultMap.get(selectedPlayerId);
 
+    const signButtons = Array.from(row.querySelectorAll(".match-sign-button"));
+    const setMatchSign = (sign) => {
+      row.dataset.sign = String(sign);
+      signButtons.forEach((button) => {
+        const active = Number(button.dataset.sign) === sign;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+      });
+    };
+    setMatchSign(existingResult && Number(existingResult.points) < 0 ? -1 : 1);
     if (existingResult) {
-      pointInput.value = String(existingResult.points);
+      pointInput.value = String(Math.abs(Number(existingResult.points)) / 100);
     }
+    signButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        setMatchSign(Number(button.dataset.sign));
+        updateMatchPointAssist();
+        pointInput.focus();
+      });
+    });
 
     select.addEventListener("change", () => {
       updatePlayerSelectAvailability();
@@ -3236,7 +3256,17 @@ function getMatchPointInputs() {
 }
 
 function setAutoCalculatedPoint(input, points) {
-  input.value = String(points);
+  const row = input.closest(".match-entry-row");
+  const sign = points < 0 ? -1 : 1;
+  if (row) {
+    row.dataset.sign = String(sign);
+    row.querySelectorAll(".match-sign-button").forEach((button) => {
+      const active = Number(button.dataset.sign) === sign;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+  }
+  input.value = String(Math.abs(points) / 100);
   input.dataset.autoCalculated = "true";
   input.classList.add("is-auto-calculated");
 
@@ -3266,6 +3296,25 @@ function clearAutoCalculatedPoint(input, { clearValue = false } = {}) {
   }
 }
 
+function getMatchInputPointValue(input) {
+  const row = input.closest(".match-entry-row");
+  const sign = Number(row?.dataset.sign || 1);
+  const raw = input.value.trim();
+  return raw === "" ? null : Number(raw) * 100 * sign;
+}
+
+function updateMatchPointConvertedLabels() {
+  getMatchPointInputs().forEach((input) => {
+    const value = getMatchInputPointValue(input);
+    const label = input.closest("label")?.querySelector(".match-point-converted");
+    if (label) {
+      label.textContent = value === null || !Number.isFinite(value)
+        ? "0点"
+        : `${value.toLocaleString("ja-JP")}点`;
+    }
+  });
+}
+
 function applyLastPointAutoCalculation() {
   const rule = getMatchRule();
   const inputs = getMatchPointInputs();
@@ -3276,13 +3325,13 @@ function applyLastPointAutoCalculation() {
   if (currentAutoInput) {
     const otherValues = inputs
       .filter((input) => input !== currentAutoInput)
-      .map((input) => input.value.trim());
+      .map((input) => getMatchInputPointValue(input));
 
     const canRecalculate = otherValues.every(
       (value) =>
-        value !== "" &&
-        Number.isFinite(Number(value)) &&
-        Number.isInteger(Number(value)),
+        value !== null &&
+        Number.isFinite(value) &&
+        Number.isInteger(value),
     );
 
     if (!canRecalculate) {
@@ -3293,17 +3342,10 @@ function applyLastPointAutoCalculation() {
     }
 
     const otherTotal = otherValues.reduce(
-      (sum, value) => sum + Number(value),
+      (sum, value) => sum + value,
       0,
     );
     const remaining = rule.requiredPointTotal - otherTotal;
-
-    if (remaining < 0) {
-      clearAutoCalculatedPoint(currentAutoInput, {
-        clearValue: true,
-      });
-      return;
-    }
 
     setAutoCalculatedPoint(currentAutoInput, remaining);
     return;
@@ -3320,25 +3362,20 @@ function applyLastPointAutoCalculation() {
   const filledInputs = inputs.filter(
     (input) => input.value.trim() !== "",
   );
-  const allFilledValuesAreValid = filledInputs.every(
-    (input) =>
-      Number.isFinite(Number(input.value)) &&
-      Number.isInteger(Number(input.value)),
-  );
+  const allFilledValuesAreValid = filledInputs.every((input) => {
+    const value = getMatchInputPointValue(input);
+    return value !== null && Number.isFinite(value) && Number.isInteger(value);
+  });
 
   if (!allFilledValuesAreValid) {
     return;
   }
 
   const filledTotal = filledInputs.reduce(
-    (sum, input) => sum + Number(input.value),
+    (sum, input) => sum + getMatchInputPointValue(input),
     0,
   );
   const remaining = rule.requiredPointTotal - filledTotal;
-
-  if (remaining < 0) {
-    return;
-  }
 
   setAutoCalculatedPoint(blankInputs[0], remaining);
 }
@@ -3370,6 +3407,7 @@ function updatePointTotalDifference(total) {
 
 function updateMatchPointAssist() {
   applyLastPointAutoCalculation();
+  updateMatchPointConvertedLabels();
   updateMatchPreview();
 }
 
@@ -3384,10 +3422,11 @@ function readMatchEntries() {
       ".match-point-input",
     ).value.trim();
 
+    const sign = Number(row.dataset.sign || 1);
     return {
       playerId,
       pointText,
-      points: pointText === "" ? null : Number(pointText),
+      points: pointText === "" ? null : Number(pointText) * 100 * sign,
     };
   });
 }
@@ -3578,7 +3617,7 @@ function getCurrentEventRankPoints() {
   }
 
   throw new Error(
-    "イベントのウマ・オカ設定を読み込めませんでした。ページを再読み込みして、もう一度お試しください。",
+    "対局のウマ・オカ設定を読み込めませんでした。ページを再読み込みして、もう一度お試しください。",
   );
 }
 
@@ -4123,8 +4162,15 @@ async function handlePlayerAddSubmit(event) {
   playerSaveButton.textContent = "追加中...";
 
   try {
-    await createLocalPlayer(playerNameInput.value.trim());
-    await showEventDetailScreen();
+    const addedName = playerNameInput.value.trim();
+    await createLocalPlayer(addedName);
+    playerNameInput.value = "";
+    playerAddMessage.textContent =
+      `${addedName}を追加しました。続けて別のプレイヤーも追加できます。`;
+    playerAddMessage.className = "form-message is-success";
+    renderRegisteredPlayers();
+    renderFrequentPlayerCandidates();
+    window.setTimeout(() => playerNameInput.focus(), 0);
   } catch (error) {
     console.error(error);
 
@@ -4171,6 +4217,11 @@ function formatSignedScore(score) {
   return score > 0 ? `+${score}` : String(score);
 }
 
+function getTodayEventName() {
+  const today = new Date();
+  return `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
+}
+
 function updateScorePreview() {
   const gameType = getSelectedRadioValue("gameType") || "yonma";
   const preset = umaPresetSelect.value || "10-30";
@@ -4194,17 +4245,12 @@ function validateEventForm() {
   eventCreateMessage.textContent = "";
   eventCreateMessage.className = "form-message";
 
-  const name = eventNameInput.value.trim();
-
-  if (!name) {
-    eventNameError.textContent = "イベント名を入力してください。";
-    eventNameInput.classList.add("input-error");
-    return false;
-  }
+  const name = eventNameInput.value.trim() || getTodayEventName();
+  eventNameInput.value = name;
 
   if (name.length > 40) {
     eventNameError.textContent =
-      "イベント名は40文字以内で入力してください。";
+      "対局名は40文字以内で入力してください。";
     eventNameInput.classList.add("input-error");
     return false;
   }
@@ -4225,7 +4271,7 @@ async function handleEventCreateSubmit(event) {
   try {
     const createdEvent = await callGasApi("createEvent", {
       ownerUserId: currentUser.userId,
-      name: eventNameInput.value.trim(),
+      name: eventNameInput.value.trim() || getTodayEventName(),
       eventType: getSelectedRadioValue("eventType"),
       gameType: getSelectedRadioValue("gameType"),
       umaPreset: umaPresetSelect.value,
@@ -4245,7 +4291,7 @@ async function handleEventCreateSubmit(event) {
 
     eventCreateMessage.textContent =
       error.message ||
-      "イベントの作成中にエラーが発生しました。";
+      "対局の作成中にエラーが発生しました。";
     eventCreateMessage.className =
       "form-message is-error";
   } finally {
@@ -4380,6 +4426,7 @@ function showEventCreateScreen() {
   eventCreateScreen.hidden = false;
 
   eventCreateForm.reset();
+  eventNameInput.value = getTodayEventName();
   eventNameError.textContent = "";
   eventNameInput.classList.remove("input-error");
   eventCreateMessage.textContent = "";
@@ -4561,6 +4608,7 @@ playerAddForm.addEventListener(
   "submit",
   handlePlayerAddSubmit,
 );
+playerFinishButton.addEventListener("click", showEventDetailScreen);
 
 connectionTestButton.addEventListener(
   "click",

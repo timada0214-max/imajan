@@ -224,6 +224,11 @@ const playerFinishButton = document.getElementById(
   "player-finish-button",
 );
 
+const FREQUENT_PLAYER_BATCH_DELAY_MS = 700;
+let frequentPlayerBatchTimer = null;
+let frequentPlayerPendingQueue = [];
+let frequentPlayerSaveChain = Promise.resolve();
+
 const matchHistoryList = document.getElementById(
   "match-history-list",
 );
@@ -4348,46 +4353,118 @@ function renderFrequentPlayerCandidates() {
   });
 }
 
-async function handleFrequentPlayerAdd(name, button) {
+function refreshPlayerRegistrationUi() {
+  if (!playerAddScreen.hidden) {
+    renderRegisteredPlayers();
+    renderFrequentPlayerCandidates();
+  }
+
+  if (!eventDetailScreen.hidden) {
+    renderEventDetail();
+  }
+}
+
+function scheduleFrequentPlayerBatchSave() {
+  if (frequentPlayerBatchTimer) {
+    window.clearTimeout(frequentPlayerBatchTimer);
+  }
+
+  frequentPlayerBatchTimer = window.setTimeout(() => {
+    flushFrequentPlayerBatch();
+  }, FREQUENT_PLAYER_BATCH_DELAY_MS);
+}
+
+function flushFrequentPlayerBatch() {
+  if (frequentPlayerBatchTimer) {
+    window.clearTimeout(frequentPlayerBatchTimer);
+    frequentPlayerBatchTimer = null;
+  }
+
+  if (frequentPlayerPendingQueue.length === 0) {
+    return frequentPlayerSaveChain;
+  }
+
+  const batch = frequentPlayerPendingQueue.splice(0);
+  const names = batch.map((item) => item.name);
+  const optimisticIds = new Set(
+    batch.map((item) => item.player.playerId),
+  );
+  const startSortOrder = Math.min(
+    ...batch.map((item) => Number(item.player.sortOrder || 1)),
+  );
+
+  frequentPlayerSaveChain = frequentPlayerSaveChain
+    .catch(() => undefined)
+    .then(async () => {
+      try {
+        const savedPlayers = await createPlayersOnSheet(names, {
+          startSortOrder,
+        });
+
+        cloudPlayers = cloudPlayers.filter(
+          (player) => !optimisticIds.has(player.playerId),
+        );
+        cloudPlayers.push(...savedPlayers);
+
+        if (!playerAddScreen.hidden) {
+          playerAddMessage.textContent =
+            names.length === 1
+              ? `${names[0]}を追加しました。`
+              : `${names.length}人をまとめて追加しました。`;
+          playerAddMessage.className = "form-message is-success";
+        }
+
+        refreshPlayerRegistrationUi();
+      } catch (error) {
+        console.error(error);
+        cloudPlayers = cloudPlayers.filter(
+          (player) => !optimisticIds.has(player.playerId),
+        );
+        refreshPlayerRegistrationUi();
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : "プレイヤーの追加中にエラーが発生しました。";
+
+        if (!playerAddScreen.hidden) {
+          playerAddMessage.textContent = message;
+          playerAddMessage.className = "form-message is-error";
+        } else {
+          window.alert(message);
+        }
+      }
+    });
+
+  return frequentPlayerSaveChain;
+}
+
+function handleFrequentPlayerAdd(name, button) {
   if (!currentEvent || button.disabled) {
     return;
   }
 
-  button.disabled = true;
-  button.classList.add("is-adding");
-  button.textContent = "追加中...";
+  const normalizedName = normalizePlayerName(name);
+  const alreadyRegistered = getEventPlayers().some(
+    (player) => normalizePlayerName(player.name) === normalizedName,
+  );
+
+  if (alreadyRegistered) {
+    renderFrequentPlayerCandidates();
+    return;
+  }
+
+  const optimisticPlayer = createOptimisticPlayers([name])[0];
+  cloudPlayers.push(optimisticPlayer);
+  frequentPlayerPendingQueue.push({
+    name,
+    player: optimisticPlayer,
+  });
 
   playerAddMessage.textContent = "";
   playerAddMessage.className = "form-message";
-
-  try {
-    await createLocalPlayer(name);
-
-    button.classList.remove("is-adding");
-    button.classList.add("is-added");
-    button.textContent = `✓ ${name}`;
-
-    playerAddMessage.textContent =
-      `${name}を追加しました。続けて別のプレイヤーも追加できます。`;
-    playerAddMessage.className =
-      "form-message is-success";
-
-    renderRegisteredPlayers();
-    renderFrequentPlayerCandidates();
-  } catch (error) {
-    console.error(error);
-
-    button.disabled = false;
-    button.classList.remove("is-adding");
-    button.textContent = name;
-
-    playerAddMessage.textContent =
-      error instanceof Error
-        ? error.message
-        : "プレイヤーの追加中にエラーが発生しました。";
-    playerAddMessage.className =
-      "form-message is-error";
-  }
+  refreshPlayerRegistrationUi();
+  scheduleFrequentPlayerBatchSave();
 }
 
 function showPlayerAddScreen({ preserveValues = false } = {}) {
@@ -5183,6 +5260,7 @@ adjustmentDeleteButton.addEventListener(
 );
 
 playerAddBackButton.addEventListener("click", () => {
+  flushFrequentPlayerBatch();
   showEventDetailScreen(currentEvent, { scrollToTop: true });
 });
 
@@ -5192,6 +5270,7 @@ playerAddForm.addEventListener(
 );
 if (playerFinishButton) {
   playerFinishButton.addEventListener("click", () => {
+    flushFrequentPlayerBatch();
     showEventDetailScreen(currentEvent, { scrollToTop: true });
   });
 }

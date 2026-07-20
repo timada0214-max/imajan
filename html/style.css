@@ -3771,3 +3771,46 @@ select:focus {
     min-width: 29px;
   }
 }
+
+/* STEP14-2C 半荘登録：百点単位の入力ガイドを復活 */
+#match-create-screen .match-point-control {
+  grid-template-columns: 62px minmax(70px, 1fr) 34px;
+  gap: 4px;
+}
+
+#match-create-screen .match-point-unit {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 34px;
+  margin: 0;
+  padding: 0;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  #match-create-screen .match-point-control {
+    grid-template-columns: 62px minmax(66px, 1fr) 32px;
+    gap: 3px;
+  }
+
+  #match-create-screen .match-point-unit {
+    min-width: 32px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 370px) {
+  #match-create-screen .match-point-control {
+    grid-template-columns: 58px minmax(60px, 1fr) 30px;
+  }
+
+  #match-create-screen .match-point-unit {
+    min-width: 30px;
+    font-size: 9px;
+  }
+}

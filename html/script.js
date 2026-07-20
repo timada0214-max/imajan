@@ -3146,14 +3146,14 @@ function renderMatchEntryRows(
           </select>
         </label>
         <label>
-          最終持ち点（100点単位）
+          最終持ち点
           <div class="match-point-control">
             <div class="match-sign-buttons" role="group" aria-label="符号">
               <button class="match-sign-button is-active" type="button" data-sign="1" aria-pressed="true">＋</button>
               <button class="match-sign-button" type="button" data-sign="-1" aria-pressed="false">−</button>
             </div>
             <input class="match-point-input" type="number" inputmode="numeric" min="0" step="1" placeholder="例：420" />
-            <span class="match-point-unit">×100点</span>
+            <span class="match-point-unit">00点</span>
           </div>
           <small class="match-point-converted">0点</small>
           <small class="auto-calculated-note" hidden>残り点数を自動入力</small>

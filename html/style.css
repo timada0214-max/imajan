@@ -2785,3 +2785,101 @@ select:focus {
     text-align: right;
   }
 }
+
+/* v1.0C 半荘結果入力UIの整列 */
+.match-entry-row {
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: start;
+  padding: 14px 16px;
+}
+
+.match-entry-number {
+  align-self: start;
+  margin-top: 2px;
+}
+
+.match-entry-fields {
+  grid-template-columns: minmax(200px, 0.9fr) minmax(300px, 1.1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.match-entry-fields > label {
+  display: grid;
+  grid-template-rows: auto 48px auto;
+  gap: 6px;
+  align-content: start;
+  margin: 0;
+}
+
+.match-entry-fields > label > select {
+  width: 100%;
+  height: 48px;
+  margin: 0;
+}
+
+.match-point-control {
+  grid-template-columns: 82px minmax(120px, 1fr) auto;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 48px;
+}
+
+.match-sign-buttons,
+.match-sign-button,
+.match-point-input {
+  height: 48px;
+}
+
+.match-point-unit {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding-right: 2px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.match-point-converted {
+  min-height: 20px;
+  margin: 0;
+  padding-right: 2px;
+  text-align: right;
+  line-height: 20px;
+}
+
+@media (max-width: 640px) {
+  .match-entry-row {
+    grid-template-columns: 36px minmax(0, 1fr);
+    padding: 13px;
+  }
+
+  .match-entry-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .match-entry-fields > label {
+    grid-template-rows: auto 48px auto;
+  }
+
+  .match-point-control {
+    grid-template-columns: 82px minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 390px) {
+  .match-point-control {
+    grid-template-columns: 76px minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  .match-point-unit {
+    grid-column: auto;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+  }
+}

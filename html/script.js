@@ -3444,15 +3444,15 @@ function renderMatchEntryRows(
     row.innerHTML = `
       <span class="match-entry-number">${index + 1}</span>
       <div class="match-entry-fields">
-        <label>
-          プレイヤー
-          <select class="match-player-select">
+        <label class="match-player-field">
+          <span class="visually-hidden">${index + 1}位のプレイヤー</span>
+          <select class="match-player-select" aria-label="${index + 1}位のプレイヤー">
             <option value="">選択してください</option>
             ${playerOptions}
           </select>
         </label>
-        <label>
-          最終持ち点
+        <label class="match-point-field">
+          <span class="visually-hidden">${index + 1}位の最終持ち点</span>
           <div class="match-point-control">
             <div class="match-sign-buttons" role="group" aria-label="符号">
               <button class="match-sign-button is-active" type="button" data-sign="1" aria-pressed="true">＋</button>

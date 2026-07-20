@@ -243,10 +243,9 @@ function apiCreateEvent_(payload) {
       }
     }
 
-    const rankScores = getEventRankScores_(
-      payload.umaPreset,
-      payload.gameType
-    );
+    const eventRule = buildEventRuleFromPayload_(payload);
+    const rankScores = calculateRankScores_(eventRule);
+    const oka = calculateOka_(eventRule);
     const now = getNowIso_();
     const createdAt =
       normalizeOptionalIso_(payload.createdAt) || now;
@@ -261,7 +260,15 @@ function apiCreateEvent_(payload) {
       String(payload.name).trim(),
       String(payload.eventType),
       String(payload.gameType),
-      String(payload.umaPreset),
+      eventRule.ruleMode,
+      eventRule.rulePreset,
+      eventRule.startingPoints,
+      eventRule.returnPoints,
+      eventRule.umaByRank[0] || 0,
+      eventRule.umaByRank[1] || 0,
+      eventRule.umaByRank[2] || 0,
+      eventRule.umaByRank[3] || 0,
+      oka,
       rankScores[0] || 0,
       rankScores[1] || 0,
       rankScores[2] || 0,
@@ -277,7 +284,16 @@ function apiCreateEvent_(payload) {
       name: String(payload.name).trim(),
       eventType: String(payload.eventType),
       gameType: String(payload.gameType),
-      umaPreset: String(payload.umaPreset),
+      ruleMode: eventRule.ruleMode,
+      rulePreset: eventRule.rulePreset,
+      umaPreset: eventRule.rulePreset,
+      startingPoints: eventRule.startingPoints,
+      returnPoints: eventRule.returnPoints,
+      uma1: Number(eventRule.umaByRank[0] || 0),
+      uma2: Number(eventRule.umaByRank[1] || 0),
+      uma3: Number(eventRule.umaByRank[2] || 0),
+      uma4: Number(eventRule.umaByRank[3] || 0),
+      oka: oka,
       rankScore1: Number(rankScores[0] || 0),
       rankScore2: Number(rankScores[1] || 0),
       rankScore3: Number(rankScores[2] || 0),
@@ -345,7 +361,6 @@ function validateEventPayload_(payload) {
   const name = String(payload.name || "").trim();
   const eventType = String(payload.eventType || "");
   const gameType = String(payload.gameType || "");
-  const umaPreset = String(payload.umaPreset || "");
   const status = String(payload.status || "active");
 
   if (!ownerUserId) {
@@ -364,9 +379,7 @@ function validateEventPayload_(payload) {
     throw nameError;
   }
 
-  if (
-    ["league", "single"].indexOf(eventType) === -1
-  ) {
+  if (["league", "single"].indexOf(eventType) === -1) {
     const typeError = new Error(
       "イベント種別が正しくありません。"
     );
@@ -374,9 +387,7 @@ function validateEventPayload_(payload) {
     throw typeError;
   }
 
-  if (
-    ["yonma", "sanma"].indexOf(gameType) === -1
-  ) {
+  if (["yonma", "sanma"].indexOf(gameType) === -1) {
     const gameError = new Error(
       "麻雀種別が正しくありません。"
     );
@@ -384,56 +395,123 @@ function validateEventPayload_(payload) {
     throw gameError;
   }
 
-  if (
-    ["10-30", "10-20", "5-10", "none"].indexOf(
-      umaPreset
-    ) === -1
-  ) {
-    const umaError = new Error(
-      "ウマ・オカ設定が正しくありません。"
-    );
-    umaError.code = "INVALID_UMA_PRESET";
-    throw umaError;
-  }
-
-  if (
-    ["active", "completed"].indexOf(status) === -1
-  ) {
+  if (["active", "completed"].indexOf(status) === -1) {
     const statusError = new Error(
       "イベント状態が正しくありません。"
     );
     statusError.code = "INVALID_EVENT_STATUS";
     throw statusError;
   }
+
+  buildEventRuleFromPayload_(payload);
 }
 
-function getEventRankScores_(umaPreset, gameType) {
+/**
+ * STEP10-2ではフロント画面をまだ変更しないため、現在のumaPresetも受け取れます。
+ * 次STEPで画面をルール入力方式へ変更した後も、同じ関数を使用します。
+ */
+function buildEventRuleFromPayload_(payload) {
+  const gameType = String(payload.gameType || "");
+  const playerCount = gameType === "sanma" ? 3 : 4;
+  const explicitRuleMode = String(payload.ruleMode || "").trim();
+
+  if (explicitRuleMode === "manual") {
+    const manualRule = normalizeMahjongRule_({
+      playerCount: playerCount,
+      startingPoints: payload.startingPoints,
+      returnPoints: payload.returnPoints,
+      umaByRank: [
+        payload.uma1,
+        payload.uma2,
+        payload.uma3,
+        payload.uma4,
+      ].slice(0, playerCount),
+    });
+
+    return {
+      ruleMode: "manual",
+      rulePreset: "custom",
+      startingPoints: manualRule.startingPoints,
+      returnPoints: manualRule.returnPoints,
+      umaByRank: manualRule.umaByRank,
+    };
+  }
+
+  const presetName = String(
+    payload.rulePreset || payload.umaPreset || "10-30"
+  ).trim();
+
+  return getEventRulePreset_(presetName, gameType);
+}
+
+function getEventRulePreset_(presetName, gameType) {
   const presets = {
-    "10-30": {
-      yonma: [50, 10, -10, -30],
-      sanma: [40, 0, -40, 0],
+    yonma: {
+      "10-30": {
+        startingPoints: 25000,
+        returnPoints: 30000,
+        umaByRank: [30, 10, -10, -30],
+      },
+      "10-20": {
+        startingPoints: 25000,
+        returnPoints: 30000,
+        umaByRank: [20, 10, -10, -20],
+      },
+      "5-10": {
+        startingPoints: 25000,
+        returnPoints: 30000,
+        umaByRank: [10, 5, -5, -10],
+      },
+      none: {
+        startingPoints: 30000,
+        returnPoints: 30000,
+        umaByRank: [0, 0, 0, 0],
+      },
     },
-    "10-20": {
-      yonma: [40, 10, -10, -20],
-      sanma: [30, 0, -30, 0],
-    },
-    "5-10": {
-      yonma: [25, 5, -5, -10],
-      sanma: [20, 0, -20, 0],
-    },
-    none: {
-      yonma: [0, 0, 0, 0],
-      sanma: [0, 0, 0, 0],
+    sanma: {
+      "10-30": {
+        startingPoints: 35000,
+        returnPoints: 40000,
+        umaByRank: [25, 0, -25],
+      },
+      "10-20": {
+        startingPoints: 35000,
+        returnPoints: 40000,
+        umaByRank: [20, 0, -20],
+      },
+      "5-10": {
+        startingPoints: 35000,
+        returnPoints: 40000,
+        umaByRank: [10, 0, -10],
+      },
+      none: {
+        startingPoints: 35000,
+        returnPoints: 35000,
+        umaByRank: [0, 0, 0],
+      },
     },
   };
 
-  if (!presets[umaPreset] || !presets[umaPreset][gameType]) {
-    const error = new Error("ウマ・オカ設定が正しくありません。");
-    error.code = "INVALID_UMA_PRESET";
+  if (!presets[gameType] || !presets[gameType][presetName]) {
+    const error = new Error("ルールプリセットが正しくありません。");
+    error.code = "INVALID_RULE_PRESET";
     throw error;
   }
 
-  return presets[umaPreset][gameType];
+  const normalizedRule = normalizeMahjongRule_({
+    playerCount: gameType === "sanma" ? 3 : 4,
+    startingPoints: presets[gameType][presetName].startingPoints,
+    returnPoints: presets[gameType][presetName].returnPoints,
+    umaByRank: presets[gameType][presetName].umaByRank,
+  });
+
+  return {
+    ruleMode: "preset",
+    rulePreset: presetName,
+    startingPoints: normalizedRule.startingPoints,
+    returnPoints: normalizedRule.returnPoints,
+    umaByRank: normalizedRule.umaByRank,
+  };
 }
 
 function getMatchCountMap_() {
@@ -458,7 +536,16 @@ function serializeEventRecord_(event, matchCountMap) {
     name: String(event.name),
     eventType: String(event.eventType),
     gameType: String(event.gameType),
-    umaPreset: String(event.umaPreset || ""),
+    ruleMode: String(event.ruleMode || "preset"),
+    rulePreset: String(event.rulePreset || ""),
+    umaPreset: String(event.rulePreset || ""),
+    startingPoints: Number(event.startingPoints || 0),
+    returnPoints: Number(event.returnPoints || 0),
+    uma1: Number(event.uma1 || 0),
+    uma2: Number(event.uma2 || 0),
+    uma3: Number(event.uma3 || 0),
+    uma4: Number(event.uma4 || 0),
+    oka: Number(event.oka || 0),
     rankScore1: Number(event.rankScore1 || 0),
     rankScore2: Number(event.rankScore2 || 0),
     rankScore3: Number(event.rankScore3 || 0),

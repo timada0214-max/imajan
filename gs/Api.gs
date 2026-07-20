@@ -1,6 +1,7 @@
 "use strict";
 
 /**
+ * STEP12-7: Spreadsheetアクセス削減とMatchResults書込最適化を追加。
  * STEP12-1: API処理時間を計測するための簡易コンテキストです。
  * 通常のAPIレスポンスには影響せず、GASの実行ログだけへ出力します。
  */
@@ -90,14 +91,34 @@ function removeCacheKeys_(keys, label) {
 
 function getCachedSheetRecordsWithPerf_(sheet) {
   const sheetName = sheet.getName();
+
+  // 同一API実行中に同じシートを複数回要求された場合は、
+  // CacheServiceへも再アクセスせず、実行中メモリの値を使い回します。
+  if (
+    activePerformanceContext_ &&
+    Object.prototype.hasOwnProperty.call(
+      activePerformanceContext_.requestRecordCache,
+      sheetName
+    )
+  ) {
+    logCache_("request:" + sheetName, "HIT");
+    return activePerformanceContext_.requestRecordCache[sheetName];
+  }
+
   const key = buildCacheKey_("sheet", sheetName);
   const cached = readJsonCache_(key, "sheet:" + sheetName);
 
   if (cached !== null) {
+    if (activePerformanceContext_) {
+      activePerformanceContext_.requestRecordCache[sheetName] = cached;
+    }
     return cached;
   }
 
   const records = getSheetRecordsWithPerf_(sheet);
+  if (activePerformanceContext_) {
+    activePerformanceContext_.requestRecordCache[sheetName] = records;
+  }
   writeJsonCache_(
     key,
     records,
@@ -111,6 +132,24 @@ function invalidateSheetCache_(sheetName) {
   removeCacheKeys_([
     buildCacheKey_("sheet", sheetName),
   ], "sheet:" + sheetName);
+
+  if (activePerformanceContext_) {
+    delete activePerformanceContext_.requestRecordCache[sheetName];
+  }
+}
+
+function invalidateMatchDataCaches_() {
+  [
+    APP_CONFIG.SHEETS.MATCHES,
+    APP_CONFIG.SHEETS.MATCH_RESULTS,
+  ].forEach(invalidateSheetCache_);
+}
+
+function invalidateAdjustmentDataCaches_() {
+  [
+    APP_CONFIG.SHEETS.ADJUSTMENTS,
+    APP_CONFIG.SHEETS.ADJUSTMENT_ENTRIES,
+  ].forEach(invalidateSheetCache_);
 }
 
 function invalidateOwnerCaches_(ownerUserId, options) {
@@ -139,6 +178,7 @@ function startPerformanceContext_(action) {
     lastMarkedAt: Date.now(),
     sheetReads: {},
     steps: [],
+    requestRecordCache: {},
   };
 
   console.log(
@@ -293,6 +333,9 @@ function routeApiRequest_(action, payload) {
 
     case "createPlayer":
       return apiCreatePlayer_(payload);
+
+    case "createPlayers":
+      return apiCreatePlayers_(payload);
 
     case "listPlayers":
       return apiListPlayers_(payload);
@@ -965,6 +1008,148 @@ function apiCreatePlayer_(payload) {
   }
 }
 
+
+/**
+ * 複数プレイヤーを1回のAPI通信・1回のsetValuesで一括登録します。
+ * 1件でも入力不備や重複があれば、全件を保存せずエラーにします。
+ */
+function apiCreatePlayers_(payload) {
+  const ownerUserId = String(
+    payload && payload.ownerUserId ? payload.ownerUserId : ""
+  ).trim();
+  const eventId = String(
+    payload && payload.eventId ? payload.eventId : ""
+  ).trim();
+  const names = Array.isArray(payload && payload.names)
+    ? payload.names.map(function (name) {
+        return String(name || "").trim();
+      }).filter(Boolean)
+    : [];
+
+  if (!ownerUserId) {
+    const ownerError = new Error("ユーザーIDが指定されていません。");
+    ownerError.code = "INVALID_OWNER_USER_ID";
+    throw ownerError;
+  }
+  if (!eventId) {
+    const eventError = new Error("イベントIDが指定されていません。");
+    eventError.code = "INVALID_EVENT_ID";
+    throw eventError;
+  }
+  if (names.length === 0) {
+    const namesError = new Error(
+      "プレイヤー名を1人以上入力してください。"
+    );
+    namesError.code = "INVALID_PLAYER_NAMES";
+    throw namesError;
+  }
+  if (names.length > 20) {
+    const limitError = new Error(
+      "一度に登録できるプレイヤーは20人までです。"
+    );
+    limitError.code = "TOO_MANY_PLAYERS";
+    throw limitError;
+  }
+
+  names.forEach(function (name) {
+    if (name.length > 20) {
+      const lengthError = new Error(
+        "プレイヤー名は20文字以内で入力してください。"
+      );
+      lengthError.code = "PLAYER_NAME_TOO_LONG";
+      throw lengthError;
+    }
+  });
+
+  const normalizedInputNames = names.map(function (name) {
+    return name.toLowerCase();
+  });
+  const inputNameSet = Object.create(null);
+  normalizedInputNames.forEach(function (name, index) {
+    if (inputNameSet[name]) {
+      const duplicateInputError = new Error(
+        "入力されたプレイヤー名が重複しています: " + names[index]
+      );
+      duplicateInputError.code = "DUPLICATE_INPUT_PLAYER_NAME";
+      throw duplicateInputError;
+    }
+    inputNameSet[name] = true;
+  });
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    assertEventOwnership_(eventId, ownerUserId);
+    markPerformance_("VERIFY_EVENT_OWNERSHIP");
+
+    const sheet = getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS);
+    const players = getCachedSheetRecordsWithPerf_(sheet);
+    markPerformance_("READ_PLAYERS");
+
+    const existingNameSet = Object.create(null);
+    let currentEventPlayerCount = 0;
+    players.forEach(function (player) {
+      if (String(player.eventId) !== eventId) {
+        return;
+      }
+      currentEventPlayerCount += 1;
+      existingNameSet[String(player.name).trim().toLowerCase()] = true;
+    });
+
+    names.forEach(function (name) {
+      if (existingNameSet[name.toLowerCase()]) {
+        const duplicateError = new Error(
+          "同じ名前のプレイヤーが既に登録されています: " + name
+        );
+        duplicateError.code = "DUPLICATE_PLAYER_NAME";
+        throw duplicateError;
+      }
+    });
+
+    const now = getNowIso_();
+    const startSortOrder = Number.isFinite(Number(payload.startSortOrder))
+      ? Number(payload.startSortOrder)
+      : currentEventPlayerCount + 1;
+    const createdPlayers = names.map(function (name, index) {
+      return {
+        playerId: createId_("player"),
+        eventId: eventId,
+        name: name,
+        sortOrder: startSortOrder + index,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+    const rows = createdPlayers.map(function (player) {
+      return [
+        player.playerId,
+        player.eventId,
+        player.name,
+        player.sortOrder,
+        player.createdAt,
+        player.updatedAt,
+      ];
+    });
+    markPerformance_("VALIDATE_AND_BUILD_ROWS");
+
+    const startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
+    markPerformance_("WRITE_PLAYERS_BATCH");
+
+    invalidateSheetCache_(APP_CONFIG.SHEETS.PLAYERS);
+    invalidateOwnerCaches_(ownerUserId, { eventDetail: true });
+    markPerformance_("INVALIDATE_CACHE");
+    markPerformance_("RETURN_RESPONSE");
+
+    return attachPerformance_({
+      players: createdPlayers,
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function apiListPlayers_(payload) {
   const ownerUserId = String(
     payload && payload.ownerUserId
@@ -1187,9 +1372,11 @@ function apiSaveMatch_(payload) {
       matchId,
       calculatedResults,
       createdAt,
-      now
+      now,
+      Boolean(existingMatch)
     );
     markPerformance_("WRITE_MATCH_RESULTS");
+    invalidateMatchDataCaches_();
     invalidateOwnerCaches_(payload.ownerUserId, {
       eventList: true,
       eventDetail: true,
@@ -1378,6 +1565,7 @@ function apiDeleteMatch_(payload) {
   );
   deleteMatchResultRows_(resultSheet, matchId);
   matchSheet.deleteRow(index + 2);
+  invalidateMatchDataCaches_();
   invalidateOwnerCaches_(ownerUserId, {
     eventList: true,
     eventDetail: true,
@@ -1519,9 +1707,9 @@ function upsertMatchResultRows_(
   matchId,
   calculatedResults,
   createdAt,
-  updatedAt
+  updatedAt,
+  isExistingMatch
 ) {
-  const lastRow = resultSheet.getLastRow();
   const resultRows = calculatedResults.map(function (result, index) {
     return [
       createId_("matchResult"),
@@ -1537,27 +1725,40 @@ function upsertMatchResultRows_(
     ];
   });
 
-  if (lastRow < 2) {
+  // 新規半荘は既存結果が存在しないことが確定しているため、
+  // MatchResults列全体の検索を省略して末尾へ一括追記します。
+  if (!isExistingMatch) {
+    const nextRow = Math.max(resultSheet.getLastRow() + 1, 2);
     resultSheet
-      .getRange(2, 1, resultRows.length, resultRows[0].length)
+      .getRange(nextRow, 1, resultRows.length, resultRows[0].length)
       .setValues(resultRows);
     return;
   }
 
-  const matchIdValues = resultSheet
-    .getRange(2, 2, lastRow - 1, 1)
-    .getValues();
-  const matchingRowNumbers = [];
-
-  matchIdValues.forEach(function (row, index) {
-    if (String(row[0]) === String(matchId)) {
-      matchingRowNumbers.push(index + 2);
-    }
-  });
+  // 編集時だけTextFinderで対象行を探します。全matchId列のgetValuesを
+  // 毎回行う方式より、対象行が少ない通常ケースでアクセス量を抑えられます。
+  const matchIdRange = resultSheet.getRange(
+    2,
+    2,
+    Math.max(resultSheet.getLastRow() - 1, 1),
+    1
+  );
+  const matches = matchIdRange
+    .createTextFinder(String(matchId))
+    .matchEntireCell(true)
+    .findAll();
+  const matchingRowNumbers = matches
+    .map(function (range) {
+      return range.getRow();
+    })
+    .sort(function (a, b) {
+      return a - b;
+    });
 
   if (matchingRowNumbers.length === 0) {
+    const nextRow = Math.max(resultSheet.getLastRow() + 1, 2);
     resultSheet
-      .getRange(lastRow + 1, 1, resultRows.length, resultRows[0].length)
+      .getRange(nextRow, 1, resultRows.length, resultRows[0].length)
       .setValues(resultRows);
     return;
   }
@@ -1731,6 +1932,7 @@ function apiSaveAdjustment_(payload) {
       ]);
     });
 
+    invalidateAdjustmentDataCaches_();
     invalidateOwnerCaches_(payload.ownerUserId, {
       eventDetail: true,
     });
@@ -1862,7 +2064,7 @@ function apiGetEventDetailData_(payload) {
     playerMap[String(player.playerId)] = String(player.name || "");
   });
 
-  const matchRecords = getSheetRecordsWithPerf_(
+  const matchRecords = getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCHES)
   ).filter(function (match) {
     return Boolean(ownedEventIdSet[String(match.eventId)]);
@@ -1875,7 +2077,7 @@ function apiGetEventDetailData_(payload) {
   });
 
   const matchResultsByMatchId = {};
-  getSheetRecordsWithPerf_(
+  getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCH_RESULTS)
   )
     .filter(function (result) {
@@ -1890,7 +2092,7 @@ function apiGetEventDetailData_(payload) {
     });
 
   markPerformance_("READ_MATCH_RESULTS");
-  const adjustmentRecords = getSheetRecordsWithPerf_(
+  const adjustmentRecords = getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.ADJUSTMENTS)
   ).filter(function (adjustment) {
     return Boolean(ownedEventIdSet[String(adjustment.eventId)]);
@@ -1903,7 +2105,7 @@ function apiGetEventDetailData_(payload) {
   });
 
   const adjustmentEntriesByAdjustmentId = {};
-  getSheetRecordsWithPerf_(
+  getCachedSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.ADJUSTMENT_ENTRIES)
   )
     .filter(function (entry) {
@@ -2046,6 +2248,7 @@ function apiDeleteAdjustment_(payload) {
   }
 
   adjustmentSheet.deleteRow(index + 2);
+  invalidateAdjustmentDataCaches_();
   invalidateOwnerCaches_(ownerUserId, {
     eventDetail: true,
   });

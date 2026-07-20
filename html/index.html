@@ -778,16 +778,27 @@
                 <p>候補にない名前はこちらから入力してください。</p>
               </div>
 
-              <div class="form-group">
-                <label for="player-name">プレイヤー名</label>
-                <input
-                  id="player-name"
-                  name="playerName"
-                  type="text"
-                  placeholder="例：たなか"
-                  maxlength="20"
-                />
-                <p id="player-name-error" class="field-error"></p>
+              <div id="player-name-list" class="player-name-list">
+                <div class="form-group player-name-field">
+                  <label for="player-name-1">プレイヤー1</label>
+                  <input id="player-name-1" class="player-name-input" name="playerName1" type="text" placeholder="例：たなか" maxlength="20" autocomplete="off" />
+                  <p class="field-error player-name-error"></p>
+                </div>
+                <div class="form-group player-name-field">
+                  <label for="player-name-2">プレイヤー2</label>
+                  <input id="player-name-2" class="player-name-input" name="playerName2" type="text" placeholder="例：すずき" maxlength="20" autocomplete="off" />
+                  <p class="field-error player-name-error"></p>
+                </div>
+                <div class="form-group player-name-field">
+                  <label for="player-name-3">プレイヤー3</label>
+                  <input id="player-name-3" class="player-name-input" name="playerName3" type="text" placeholder="例：さとう" maxlength="20" autocomplete="off" />
+                  <p class="field-error player-name-error"></p>
+                </div>
+                <div class="form-group player-name-field">
+                  <label for="player-name-4">プレイヤー4</label>
+                  <input id="player-name-4" class="player-name-input" name="playerName4" type="text" placeholder="例：いとう" maxlength="20" autocomplete="off" />
+                  <p class="field-error player-name-error"></p>
+                </div>
               </div>
             </section>
 
@@ -803,7 +814,7 @@
               class="primary-button"
               type="submit"
             >
-              プレイヤーを追加
+              入力したプレイヤーをまとめて追加
             </button>
             <button
               id="player-finish-button"

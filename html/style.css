@@ -3100,3 +3100,21 @@ select:focus {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* STEP13-1: 複数プレイヤー一括登録 */
+.player-name-list {
+  display: grid;
+  gap: 14px;
+}
+
+.player-name-field {
+  margin: 0;
+}
+
+.registered-player-chip.is-pending::before {
+  content: "⏳";
+}
+
+.registered-player-chip.is-pending {
+  opacity: 0.72;
+}

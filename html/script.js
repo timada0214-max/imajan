@@ -208,9 +208,11 @@ const frequentPlayerSection = document.getElementById(
 const frequentPlayerList = document.getElementById(
   "frequent-player-list",
 );
-const playerNameInput = document.getElementById("player-name");
-const playerNameError = document.getElementById(
-  "player-name-error",
+const playerNameInputs = Array.from(
+  document.querySelectorAll(".player-name-input"),
+);
+const playerNameErrors = Array.from(
+  document.querySelectorAll(".player-name-error"),
 );
 const playerAddMessage = document.getElementById(
   "player-add-message",
@@ -1505,24 +1507,42 @@ async function loadPlayersFromSheet({ force = false } = {}) {
   }
 }
 
-async function createPlayerOnSheet(name) {
+async function createPlayersOnSheet(names, { startSortOrder = null } = {}) {
   if (!currentUser || !currentEvent) {
     throw new Error("対局情報を確認できませんでした。");
   }
 
+  const trimmedNames = names
+    .map((name) => String(name || "").trim())
+    .filter(Boolean);
   const eventPlayers = getLocalPlayers().filter(
     (player) => player.eventId === currentEvent.eventId,
   );
-  const player = await callGasApi("createPlayer", {
+  const response = await callGasApi("createPlayers", {
     ownerUserId: currentUser.userId,
     eventId: currentEvent.eventId,
-    name: name.trim(),
-    sortOrder: eventPlayers.length + 1,
+    names: trimmedNames,
+    startSortOrder: Number.isFinite(Number(startSortOrder))
+      ? Number(startSortOrder)
+      : eventPlayers.length + 1,
   });
-  const normalizedPlayer = normalizeCloudPlayer(player);
+  const players = Array.isArray(response?.players)
+    ? response.players.map(normalizeCloudPlayer)
+    : [];
 
-  cloudPlayers.push(normalizedPlayer);
-  return normalizedPlayer;
+  return players;
+}
+
+async function createPlayerOnSheet(name) {
+  const players = await createPlayersOnSheet([name]);
+  const player = players[0];
+
+  if (!player) {
+    throw new Error("プレイヤーを登録できませんでした。");
+  }
+
+  cloudPlayers.push(player);
+  return player;
 }
 
 function createEventCard(event) {
@@ -4294,6 +4314,10 @@ function renderRegisteredPlayers() {
   players.forEach((player) => {
     const chip = document.createElement("span");
     chip.className = "registered-player-chip";
+    if (player.isPending) {
+      chip.classList.add("is-pending");
+      chip.title = "保存中";
+    }
     chip.textContent = player.name;
     registeredPlayerList.appendChild(chip);
   });
@@ -4366,7 +4390,7 @@ async function handleFrequentPlayerAdd(name, button) {
   }
 }
 
-function showPlayerAddScreen() {
+function showPlayerAddScreen({ preserveValues = false } = {}) {
   if (!currentEvent) {
     showEventListScreen();
     return;
@@ -4375,59 +4399,121 @@ function showPlayerAddScreen() {
   hideAllScreens();
   playerAddScreen.hidden = false;
 
-  playerAddForm.reset();
-  playerNameError.textContent = "";
-  playerNameInput.classList.remove("input-error");
-  playerAddMessage.textContent = "";
-  playerAddMessage.className = "form-message";
+  if (!preserveValues) {
+    playerAddForm.reset();
+  }
+  clearPlayerFormErrors();
 
   renderRegisteredPlayers();
   renderFrequentPlayerCandidates();
 
   window.setTimeout(() => {
-    if (frequentPlayerSection.hidden) {
-      playerNameInput.focus();
-    }
+    const firstEmptyInput = playerNameInputs.find(
+      (input) => !input.value.trim(),
+    );
+    (firstEmptyInput || playerNameInputs[0])?.focus();
   }, 0);
 }
 
-function validatePlayerForm() {
-  playerNameError.textContent = "";
-  playerNameInput.classList.remove("input-error");
+function clearPlayerFormErrors() {
+  playerNameErrors.forEach((errorElement) => {
+    errorElement.textContent = "";
+  });
+  playerNameInputs.forEach((input) => {
+    input.classList.remove("input-error");
+  });
   playerAddMessage.textContent = "";
   playerAddMessage.className = "form-message";
+}
 
-  const name = playerNameInput.value.trim();
+function getEnteredPlayerNames() {
+  return playerNameInputs
+    .map((input) => input.value.trim())
+    .filter(Boolean);
+}
 
-  if (!name) {
-    playerNameError.textContent =
-      "プレイヤー名を入力してください。";
-    playerNameInput.classList.add("input-error");
+function validatePlayerForm() {
+  clearPlayerFormErrors();
+
+  const enteredNames = getEnteredPlayerNames();
+  if (enteredNames.length === 0) {
+    playerNameErrors[0].textContent =
+      "プレイヤー名を1人以上入力してください。";
+    playerNameInputs[0].classList.add("input-error");
     return false;
   }
 
-  if (name.length > 20) {
-    playerNameError.textContent =
-      "プレイヤー名は20文字以内で入力してください。";
-    playerNameInput.classList.add("input-error");
-    return false;
-  }
-
-  const normalizedName = normalizePlayerName(name);
-  const duplicatedPlayer = getLocalPlayers().find(
-    (player) =>
-      player.eventId === currentEvent.eventId &&
-      normalizePlayerName(player.name) === normalizedName,
+  let isValid = true;
+  const existingNames = new Set(
+    getLocalPlayers()
+      .filter((player) => player.eventId === currentEvent.eventId)
+      .map((player) => normalizePlayerName(player.name)),
   );
+  const enteredNameIndexes = new Map();
 
-  if (duplicatedPlayer) {
-    playerNameError.textContent =
-      "同じ名前のプレイヤーが既に登録されています。";
-    playerNameInput.classList.add("input-error");
-    return false;
-  }
+  playerNameInputs.forEach((input, index) => {
+    const name = input.value.trim();
+    if (!name) {
+      return;
+    }
 
-  return true;
+    if (name.length > 20) {
+      playerNameErrors[index].textContent =
+        "20文字以内で入力してください。";
+      input.classList.add("input-error");
+      isValid = false;
+      return;
+    }
+
+    const normalizedName = normalizePlayerName(name);
+    if (existingNames.has(normalizedName)) {
+      playerNameErrors[index].textContent =
+        "この名前は既に登録されています。";
+      input.classList.add("input-error");
+      isValid = false;
+      return;
+    }
+
+    if (enteredNameIndexes.has(normalizedName)) {
+      const firstIndex = enteredNameIndexes.get(normalizedName);
+      playerNameErrors[firstIndex].textContent =
+        "入力内で名前が重複しています。";
+      playerNameInputs[firstIndex].classList.add("input-error");
+      playerNameErrors[index].textContent =
+        "入力内で名前が重複しています。";
+      input.classList.add("input-error");
+      isValid = false;
+      return;
+    }
+
+    enteredNameIndexes.set(normalizedName, index);
+  });
+
+  return isValid;
+}
+
+function createOptimisticPlayers(names) {
+  const eventPlayers = getEventPlayers();
+  const now = new Date().toISOString();
+
+  return names.map((name, index) =>
+    normalizeCloudPlayer({
+      playerId: `pending-player-${Date.now()}-${index}`,
+      eventId: currentEvent.eventId,
+      name,
+      sortOrder: eventPlayers.length + index + 1,
+      createdAt: now,
+      updatedAt: now,
+      isPending: true,
+    }),
+  );
+}
+
+function showEventDetailOptimistically() {
+  hideAllScreens();
+  eventDetailScreen.hidden = false;
+  renderEventDetail();
+  scrollPageToTop();
 }
 
 async function handlePlayerAddSubmit(event) {
@@ -4437,34 +4523,45 @@ async function handlePlayerAddSubmit(event) {
     return;
   }
 
+  const names = getEnteredPlayerNames();
+  const startSortOrder = getEventPlayers().length + 1;
+  const optimisticPlayers = createOptimisticPlayers(names);
+  const optimisticIds = new Set(
+    optimisticPlayers.map((player) => player.playerId),
+  );
+
+  cloudPlayers.push(...optimisticPlayers);
   playerSaveButton.disabled = true;
-  playerSaveButton.textContent = "追加中...";
+  playerSaveButton.textContent = "保存中...";
+  showEventDetailOptimistically();
 
   try {
-    const addedName = playerNameInput.value.trim();
-    await createLocalPlayer(addedName);
-    playerNameInput.value = "";
-    playerAddMessage.textContent =
-      `${addedName}を追加しました。続けて別のプレイヤーも追加できます。`;
-    playerAddMessage.className = "form-message is-success";
-    renderRegisteredPlayers();
-    renderFrequentPlayerCandidates();
-    window.setTimeout(() => playerNameInput.focus(), 0);
+    const savedPlayers = await createPlayersOnSheet(names, {
+      startSortOrder,
+    });
+    cloudPlayers = cloudPlayers.filter(
+      (player) => !optimisticIds.has(player.playerId),
+    );
+    cloudPlayers.push(...savedPlayers);
+    renderEventDetail();
   } catch (error) {
     console.error(error);
-
+    cloudPlayers = cloudPlayers.filter(
+      (player) => !optimisticIds.has(player.playerId),
+    );
+    renderEventDetail();
+    showPlayerAddScreen({ preserveValues: true });
     playerAddMessage.textContent =
       error instanceof Error
         ? error.message
         : "プレイヤーの追加中にエラーが発生しました。";
-    playerAddMessage.className =
-      "form-message is-error";
+    playerAddMessage.className = "form-message is-error";
   } finally {
     playerSaveButton.disabled = false;
-    playerSaveButton.textContent = "プレイヤーを追加";
+    playerSaveButton.textContent =
+      "入力したプレイヤーをまとめて追加";
   }
 }
-
 const RULE_PRESETS = {
   yonma: {
     "10-30": {
@@ -5104,11 +5201,13 @@ connectionTestButton.addEventListener(
   handleConnectionTest,
 );
 
-playerNameInput.addEventListener("input", () => {
-  playerNameError.textContent = "";
-  playerNameInput.classList.remove("input-error");
-  playerAddMessage.textContent = "";
-  playerAddMessage.className = "form-message";
+playerNameInputs.forEach((input, index) => {
+  input.addEventListener("input", () => {
+    playerNameErrors[index].textContent = "";
+    input.classList.remove("input-error");
+    playerAddMessage.textContent = "";
+    playerAddMessage.className = "form-message";
+  });
 });
 
 initializeApp();

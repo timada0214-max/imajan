@@ -459,22 +459,38 @@
                   <p>全順位の合計が0になるように入力してください。</p>
 
                   <div class="uma-input-grid">
-                    <label>
+                    <div class="uma-rank-input" data-uma-rank="1">
                       <span>1位</span>
-                      <input id="uma-1" type="number" inputmode="decimal" step="0.1" value="30" />
-                    </label>
-                    <label>
+                      <div class="uma-sign-buttons" aria-label="1位のウマの符号">
+                        <button class="uma-sign-button is-active" type="button" data-sign="1" aria-pressed="true">＋</button>
+                        <button class="uma-sign-button" type="button" data-sign="-1" aria-pressed="false">－</button>
+                      </div>
+                      <input id="uma-1" type="number" inputmode="decimal" min="0" step="0.1" value="30" aria-label="1位のウマの数値" />
+                    </div>
+                    <div class="uma-rank-input" data-uma-rank="2">
                       <span>2位</span>
-                      <input id="uma-2" type="number" inputmode="decimal" step="0.1" value="10" />
-                    </label>
-                    <label>
+                      <div class="uma-sign-buttons" aria-label="2位のウマの符号">
+                        <button class="uma-sign-button is-active" type="button" data-sign="1" aria-pressed="true">＋</button>
+                        <button class="uma-sign-button" type="button" data-sign="-1" aria-pressed="false">－</button>
+                      </div>
+                      <input id="uma-2" type="number" inputmode="decimal" min="0" step="0.1" value="10" aria-label="2位のウマの数値" />
+                    </div>
+                    <div class="uma-rank-input" data-uma-rank="3">
                       <span>3位</span>
-                      <input id="uma-3" type="number" inputmode="decimal" step="0.1" value="-10" />
-                    </label>
-                    <label id="uma-4-wrap">
+                      <div class="uma-sign-buttons" aria-label="3位のウマの符号">
+                        <button class="uma-sign-button" type="button" data-sign="1" aria-pressed="false">＋</button>
+                        <button class="uma-sign-button is-active" type="button" data-sign="-1" aria-pressed="true">－</button>
+                      </div>
+                      <input id="uma-3" type="number" inputmode="decimal" min="0" step="0.1" value="10" aria-label="3位のウマの数値" />
+                    </div>
+                    <div id="uma-4-wrap" class="uma-rank-input" data-uma-rank="4">
                       <span>4位</span>
-                      <input id="uma-4" type="number" inputmode="decimal" step="0.1" value="-30" />
-                    </label>
+                      <div class="uma-sign-buttons" aria-label="4位のウマの符号">
+                        <button class="uma-sign-button" type="button" data-sign="1" aria-pressed="false">＋</button>
+                        <button class="uma-sign-button is-active" type="button" data-sign="-1" aria-pressed="true">－</button>
+                      </div>
+                      <input id="uma-4" type="number" inputmode="decimal" min="0" step="0.1" value="30" aria-label="4位のウマの数値" />
+                    </div>
                   </div>
                 </fieldset>
               </div>

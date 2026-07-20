@@ -3031,12 +3031,14 @@ select:focus {
   gap: 8px;
 }
 
-.uma-input-grid label {
+.uma-rank-input {
+  min-width: 0;
+
   display: grid;
   gap: 5px;
 }
 
-.uma-input-grid label[hidden] {
+.uma-rank-input[hidden] {
   display: none;
 }
 
@@ -3045,6 +3047,50 @@ select:focus {
   font-size: 11px;
   font-weight: 700;
   text-align: center;
+}
+
+
+.uma-sign-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.uma-sign-button {
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px;
+
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: #ffffff;
+  color: var(--color-text-secondary);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.uma-sign-button.is-active {
+  border-color: var(--color-primary);
+  background: #dcf8e5;
+  color: var(--color-primary-dark);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.uma-sign-button[data-sign="-1"].is-active {
+  border-color: #b74747;
+  background: #fff0f0;
+  color: #9c3434;
+  box-shadow: inset 0 0 0 1px #b74747;
+}
+
+.uma-sign-button:active {
+  transform: translateY(1px);
+}
+
+.uma-sign-button:focus-visible {
+  outline: 3px solid rgba(37, 100, 59, 0.2);
+  outline-offset: 2px;
 }
 
 .uma-input-grid input {

@@ -93,6 +93,8 @@ const uma1Input = document.getElementById("uma-1");
 const uma2Input = document.getElementById("uma-2");
 const uma3Input = document.getElementById("uma-3");
 const uma4Input = document.getElementById("uma-4");
+const umaInputs = [uma1Input, uma2Input, uma3Input, uma4Input];
+const umaSignButtons = document.querySelectorAll(".uma-sign-button");
 const uma4Wrap = document.getElementById("uma-4-wrap");
 const ruleInputError = document.getElementById("rule-input-error");
 const okaPreview = document.getElementById("oka-preview");
@@ -4759,6 +4761,44 @@ function calculateRulePreview(rule) {
   return { oka, rankScores };
 }
 
+function getUmaSign(input) {
+  const rankInput = input.closest(".uma-rank-input");
+  const activeButton = rankInput?.querySelector(
+    ".uma-sign-button.is-active",
+  );
+
+  return Number(activeButton?.dataset.sign) === -1 ? -1 : 1;
+}
+
+function setUmaFieldValue(input, value) {
+  const numericValue = Number(value);
+  const safeValue = Number.isFinite(numericValue) ? numericValue : 0;
+  const sign = safeValue < 0 ? -1 : 1;
+  const rankInput = input.closest(".uma-rank-input");
+
+  input.value = String(Math.abs(safeValue));
+
+  rankInput?.querySelectorAll(".uma-sign-button").forEach((button) => {
+    const isActive = Number(button.dataset.sign) === sign;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function getSignedUmaValue(input) {
+  const absoluteValue = Number(input.value);
+
+  if (!Number.isFinite(absoluteValue)) {
+    return Number.NaN;
+  }
+
+  if (absoluteValue === 0) {
+    return 0;
+  }
+
+  return Math.abs(absoluteValue) * getUmaSign(input);
+}
+
 function getManualRuleFromForm() {
   const gameType = getSelectedRadioValue("gameType") || "yonma";
   const playerCount = gameType === "sanma" ? 3 : 4;
@@ -4766,12 +4806,9 @@ function getManualRuleFromForm() {
   return {
     startingPoints: Number(startingPointsInput.value),
     returnPoints: Number(returnPointsInput.value),
-    umaByRank: [
-      Number(uma1Input.value),
-      Number(uma2Input.value),
-      Number(uma3Input.value),
-      Number(uma4Input.value),
-    ].slice(0, playerCount),
+    umaByRank: umaInputs
+      .map((input) => getSignedUmaValue(input))
+      .slice(0, playerCount),
   };
 }
 
@@ -4818,10 +4855,9 @@ function copyPresetToManualFields() {
 
   startingPointsInput.value = String(rule.startingPoints);
   returnPointsInput.value = String(rule.returnPoints);
-  uma1Input.value = String(rule.umaByRank[0] ?? 0);
-  uma2Input.value = String(rule.umaByRank[1] ?? 0);
-  uma3Input.value = String(rule.umaByRank[2] ?? 0);
-  uma4Input.value = String(rule.umaByRank[3] ?? 0);
+  umaInputs.forEach((input, index) => {
+    setUmaFieldValue(input, rule.umaByRank[index] ?? 0);
+  });
 }
 
 function updateRuleModeDisplay(options = {}) {
@@ -5249,15 +5285,34 @@ document
     });
   });
 
-[
-  startingPointsInput,
-  returnPointsInput,
-  uma1Input,
-  uma2Input,
-  uma3Input,
-  uma4Input,
-].forEach((input) => {
+[startingPointsInput, returnPointsInput].forEach((input) => {
   input.addEventListener("input", () => {
+    ruleInputError.textContent = "";
+    updateScorePreview();
+  });
+});
+
+umaInputs.forEach((input) => {
+  input.addEventListener("input", () => {
+    if (input.value !== "" && Number(input.value) < 0) {
+      input.value = String(Math.abs(Number(input.value)));
+    }
+
+    ruleInputError.textContent = "";
+    updateScorePreview();
+  });
+});
+
+umaSignButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const rankInput = button.closest(".uma-rank-input");
+
+    rankInput?.querySelectorAll(".uma-sign-button").forEach((target) => {
+      const isActive = target === button;
+      target.classList.toggle("is-active", isActive);
+      target.setAttribute("aria-pressed", String(isActive));
+    });
+
     ruleInputError.textContent = "";
     updateScorePreview();
   });

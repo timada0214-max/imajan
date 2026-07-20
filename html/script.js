@@ -1132,6 +1132,43 @@ function formatDate(dateText) {
 }
 
 /**
+ * Dateオブジェクト由来の長い文字列を、対局画面向けの日付へ整形します。
+ * 通常の対局名は変更しません。
+ */
+function formatDateLikeText(value) {
+  const text = String(value || "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const looksLikeDate =
+    /^\d{4}-\d{1,2}-\d{1,2}(?:T|$)/.test(text) ||
+    /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s/i.test(text) ||
+    /GMT[+-]\d{4}/i.test(text);
+
+  if (!looksLikeDate) {
+    return text;
+  }
+
+  const date = new Date(text);
+
+  if (Number.isNaN(date.getTime())) {
+    return text;
+  }
+
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).format(date);
+}
+
+function getEventDisplayName(event) {
+  return formatDateLikeText(event?.name) || "名称未設定の対局";
+}
+
+/**
  * イベントカードを生成します。
  */
 function getEventMigrationKey(userId) {
@@ -1387,7 +1424,7 @@ function createEventCard(event) {
   `;
 
   button.querySelector(".event-title").textContent =
-    event.name || "名称未設定の対局";
+    getEventDisplayName(event);
 
   button.addEventListener("click", () => {
     showEventDetailScreen(event);
@@ -2030,17 +2067,18 @@ function renderEventDetail() {
   const gameTypeText =
     currentEvent.gameType === "sanma" ? "三麻" : "四麻";
 
-  eventDetailTitle.textContent = currentEvent.name;
+  eventDetailTitle.textContent = getEventDisplayName(currentEvent);
   eventDetailCaption.textContent =
     currentEvent.status === "completed" ? "終了" : "開催中";
 
-  eventSummaryName.textContent = currentEvent.name;
+  eventSummaryName.textContent = getEventDisplayName(currentEvent);
   eventSummaryType.textContent = eventTypeText;
   eventSummaryGame.textContent = gameTypeText;
+  const umaText = formatDateLikeText(currentEvent.umaPreset);
   eventSummaryUma.textContent =
     currentEvent.umaPreset === "none"
       ? "ウマ・オカなし"
-      : currentEvent.umaPreset;
+      : umaText || "設定なし";
 
   standingsAllButton.classList.toggle(
     "is-active",
@@ -2946,7 +2984,7 @@ function setMatchSaveButtonsDisabled(disabled) {
 }
 
 function restoreMatchSaveButtonLabels(isEditing) {
-  matchSaveBackButton.textContent = "保存して戻る";
+  matchSaveBackButton.textContent = "保存";
   matchSaveNextButton.textContent = isEditing
     ? "変更を保存"
     : "保存して次の半荘へ";
@@ -4296,7 +4334,7 @@ async function handleEventCreateSubmit(event) {
       "form-message is-error";
   } finally {
     eventSaveButton.disabled = false;
-    eventSaveButton.textContent = "イベントを作成";
+    eventSaveButton.textContent = "対局を作成";
   }
 }
 

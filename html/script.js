@@ -3461,7 +3461,7 @@ function renderMatchEntryRows(
             <input class="match-point-input" type="number" inputmode="numeric" min="0" step="1" placeholder="例：420" />
             <span class="match-point-unit">00点</span>
           </div>
-          <small class="match-point-converted">0点</small>
+          <small class="match-point-converted" hidden></small>
           <small class="auto-calculated-note" hidden>残り点数を自動入力</small>
         </label>
       </div>
@@ -3614,9 +3614,11 @@ function updateMatchPointConvertedLabels() {
     const value = getMatchInputPointValue(input);
     const label = input.closest("label")?.querySelector(".match-point-converted");
     if (label) {
-      label.textContent = value === null || !Number.isFinite(value)
-        ? "0点"
-        : `${value.toLocaleString("ja-JP")}点`;
+      const hasValidValue = value !== null && Number.isFinite(value);
+      label.hidden = !hasValidValue;
+      label.textContent = hasValidValue
+        ? `${value.toLocaleString("ja-JP")}点`
+        : "";
     }
   });
 }

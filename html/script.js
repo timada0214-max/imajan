@@ -1427,7 +1427,7 @@ function createEventCard(event) {
     getEventDisplayName(event);
 
   button.addEventListener("click", () => {
-    showEventDetailScreen(event);
+    showEventDetailScreen(event, { scrollToTop: true });
   });
 
   return button;
@@ -1738,7 +1738,20 @@ async function loadAdjustmentsFromSheet({ force = false } = {}) {
 }
 
 
-async function showEventDetailScreen(event = currentEvent) {
+function scrollPageToTop() {
+  requestAnimationFrame(() => {
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+  });
+}
+
+async function showEventDetailScreen(
+  event = currentEvent,
+  { scrollToTop = false } = {},
+) {
   if (!event) {
     showEventListScreen();
     return;
@@ -1765,6 +1778,10 @@ async function showEventDetailScreen(event = currentEvent) {
       loadAdjustmentsFromSheet(),
     ]);
     renderEventDetail();
+
+    if (scrollToTop) {
+      scrollPageToTop();
+    }
   } catch (error) {
     console.error(error);
     playerCountText.textContent =
@@ -2793,7 +2810,7 @@ async function handleAdjustmentSubmit(event) {
     await saveAdjustmentOnSheet(targetAdjustment);
     rebuildPlayerStatsForEvent(currentEvent.eventId);
     currentEditingAdjustment = null;
-    showEventDetailScreen();
+    showEventDetailScreen(currentEvent, { scrollToTop: true });
   } catch (error) {
     console.error(error);
 
@@ -2835,7 +2852,7 @@ async function handleAdjustmentDelete() {
     );
     rebuildPlayerStatsForEvent(currentEvent.eventId);
     currentEditingAdjustment = null;
-    showEventDetailScreen();
+    showEventDetailScreen(currentEvent, { scrollToTop: true });
   } catch (error) {
     console.error(error);
 
@@ -3917,7 +3934,7 @@ async function handleMatchCreateSubmit(event) {
       prepareMatchForm();
       showContinuousMatchSavedMessage(savedMatchNumber);
     } else {
-      showEventDetailScreen();
+      showEventDetailScreen(currentEvent, { scrollToTop: true });
     }
   } catch (error) {
     console.error(error);
@@ -3955,7 +3972,7 @@ async function handleMatchDelete() {
     updatePlayersFromMatch();
     syncEventMatchCount();
     currentEditingMatch = null;
-    showEventDetailScreen();
+    showEventDetailScreen(currentEvent, { scrollToTop: true });
   } catch (error) {
     console.error(error);
 
@@ -4610,7 +4627,7 @@ rangeToLatestButton.addEventListener(
 
 matchCreateBackButton.addEventListener("click", () => {
   currentEditingMatch = null;
-  showEventDetailScreen();
+  showEventDetailScreen(currentEvent, { scrollToTop: true });
 });
 
 matchCreateForm.addEventListener(
@@ -4625,7 +4642,7 @@ matchDeleteButton.addEventListener(
 
 adjustmentCreateBackButton.addEventListener("click", () => {
   currentEditingAdjustment = null;
-  showEventDetailScreen();
+  showEventDetailScreen(currentEvent, { scrollToTop: true });
 });
 
 adjustmentCreateForm.addEventListener(
@@ -4639,14 +4656,16 @@ adjustmentDeleteButton.addEventListener(
 );
 
 playerAddBackButton.addEventListener("click", () => {
-  showEventDetailScreen();
+  showEventDetailScreen(currentEvent, { scrollToTop: true });
 });
 
 playerAddForm.addEventListener(
   "submit",
   handlePlayerAddSubmit,
 );
-playerFinishButton.addEventListener("click", showEventDetailScreen);
+playerFinishButton.addEventListener("click", () => {
+  showEventDetailScreen(currentEvent, { scrollToTop: true });
+});
 
 connectionTestButton.addEventListener(
   "click",

@@ -2883,3 +2883,96 @@ select:focus {
     text-align: left;
   }
 }
+
+
+/* v1.0F 半荘入力の符号ボタンを独立した円形ボタンへ */
+.match-sign-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  height: 48px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.match-sign-button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #cfd8d2;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(25, 45, 34, 0.08);
+  color: #66736b;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 120ms ease, background-color 140ms ease,
+    border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.match-sign-button + .match-sign-button {
+  border-left: 1px solid #cfd8d2;
+}
+
+.match-sign-button[data-sign="1"] {
+  border-color: #a9c9b4;
+  color: #287044;
+}
+
+.match-sign-button[data-sign="-1"] {
+  border-color: #e0b7b7;
+  color: #a34747;
+}
+
+.match-sign-button[data-sign="1"].is-active {
+  border-color: #287044;
+  background: #287044;
+  box-shadow: 0 2px 6px rgba(40, 112, 68, 0.24);
+  color: #fff;
+}
+
+.match-sign-button[data-sign="-1"].is-active {
+  border-color: #b64f4f;
+  background: #b64f4f;
+  box-shadow: 0 2px 6px rgba(182, 79, 79, 0.22);
+  color: #fff;
+}
+
+.match-sign-button:active {
+  transform: scale(0.92);
+}
+
+.match-sign-button:focus-visible {
+  outline: 3px solid rgba(54, 118, 76, 0.22);
+  outline-offset: 2px;
+}
+
+.match-point-control {
+  grid-template-columns: 96px minmax(120px, 1fr) auto;
+}
+
+@media (max-width: 520px) {
+  .match-sign-buttons {
+    gap: 7px;
+  }
+
+  .match-sign-button {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    min-height: 42px;
+  }
+
+  .match-point-control {
+    grid-template-columns: 91px minmax(0, 1fr) auto;
+  }
+}

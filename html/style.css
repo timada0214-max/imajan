@@ -2676,3 +2676,112 @@ select:focus {
   .match-point-control { grid-template-columns:auto minmax(0,1fr); }
   .match-point-unit { grid-column:2; }
 }
+
+/* v1.0B 半荘結果入力UIの視認性改善 */
+.match-entry-row {
+  padding: 14px;
+  gap: 8px 12px;
+}
+
+.match-entry-fields {
+  grid-template-columns: minmax(210px, 0.9fr) minmax(290px, 1.25fr);
+  align-items: end;
+  gap: 12px 16px;
+}
+
+.match-point-control {
+  grid-template-columns: 84px minmax(110px, 1fr) auto;
+  gap: 8px;
+}
+
+.match-sign-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #cdd9d1;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.match-sign-button {
+  min-width: 0;
+  min-height: 46px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #68766e;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.match-sign-button + .match-sign-button {
+  border-left: 1px solid #d8e1db;
+}
+
+.match-sign-button.is-active {
+  border-color: transparent;
+  background: #dcf8e5;
+  box-shadow: inset 0 0 0 2px #25643b;
+  color: #205b35;
+}
+
+.match-point-input {
+  width: 100%;
+  min-width: 110px;
+  padding-inline: 14px;
+  text-align: right;
+  font-size: 18px !important;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-point-input::placeholder {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.match-point-unit {
+  align-self: center;
+  font-size: 12px;
+}
+
+.match-point-converted {
+  margin-top: 4px;
+  color: var(--color-primary-dark);
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .match-entry-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .match-point-control {
+    grid-template-columns: 82px minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 390px) {
+  .match-entry-row {
+    padding: 12px;
+  }
+
+  .match-entry-fields {
+    gap: 8px;
+  }
+
+  .match-point-control {
+    grid-template-columns: 78px minmax(0, 1fr);
+  }
+
+  .match-point-unit {
+    grid-column: 2;
+    margin-top: -4px;
+    text-align: right;
+  }
+}

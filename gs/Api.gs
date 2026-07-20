@@ -1,7 +1,155 @@
 "use strict";
 
+/**
+ * STEP12-1: API処理時間を計測するための簡易コンテキストです。
+ * 通常のAPIレスポンスには影響せず、GASの実行ログだけへ出力します。
+ */
+let activePerformanceContext_ = null;
+
+function startPerformanceContext_(action) {
+  activePerformanceContext_ = {
+    action: String(action || "unknown"),
+    startedAt: Date.now(),
+    lastMarkedAt: Date.now(),
+    sheetReads: {},
+    steps: [],
+  };
+
+  console.log(
+    "[PERF][" + activePerformanceContext_.action + "] START"
+  );
+}
+
+function markPerformance_(label) {
+  if (!activePerformanceContext_) {
+    return;
+  }
+
+  const now = Date.now();
+  const elapsedMs = now - activePerformanceContext_.lastMarkedAt;
+  activePerformanceContext_.steps.push({
+    label: String(label),
+    elapsedMs: elapsedMs,
+  });
+  console.log(
+    "[PERF][" +
+      activePerformanceContext_.action +
+      "] " +
+      String(label) +
+      ": " +
+      elapsedMs +
+      "ms"
+  );
+  activePerformanceContext_.lastMarkedAt = now;
+}
+
+function getPerformanceSnapshot_() {
+  if (!activePerformanceContext_) {
+    return null;
+  }
+
+  const context = activePerformanceContext_;
+  const sheetReads = {};
+  Object.keys(context.sheetReads).forEach(function (sheetName) {
+    const item = context.sheetReads[sheetName];
+    sheetReads[sheetName] = {
+      count: item.count,
+      totalMs: item.totalMs,
+    };
+  });
+
+  return {
+    action: context.action,
+    totalMs: Date.now() - context.startedAt,
+    steps: context.steps.slice(),
+    sheetReads: sheetReads,
+  };
+}
+
+function attachPerformance_(data) {
+  if (!data || typeof data !== "object") {
+    return data;
+  }
+  data.__performance = getPerformanceSnapshot_();
+  return data;
+}
+
+function finishPerformanceContext_(status) {
+  if (!activePerformanceContext_) {
+    return;
+  }
+
+  const context = activePerformanceContext_;
+  const totalMs = Date.now() - context.startedAt;
+  const sheetSummary = Object.keys(context.sheetReads)
+    .map(function (sheetName) {
+      const item = context.sheetReads[sheetName];
+      return (
+        sheetName +
+        "=" +
+        item.totalMs +
+        "ms/" +
+        item.count +
+        "回"
+      );
+    })
+    .join(", ");
+
+  console.log(
+    "[PERF][" +
+      context.action +
+      "] END " +
+      String(status || "success") +
+      ": " +
+      totalMs +
+      "ms" +
+      (sheetSummary ? " | SHEETS " + sheetSummary : "")
+  );
+
+  activePerformanceContext_ = null;
+}
+
+/**
+ * Api.gs内のシート読込を計測します。
+ * 元のgetSheetRecords_の戻り値はそのまま返します。
+ */
+function getSheetRecordsWithPerf_(sheet) {
+  const startedAt = Date.now();
+  const records = getSheetRecords_(sheet);
+  const elapsedMs = Date.now() - startedAt;
+
+  if (activePerformanceContext_) {
+    const sheetName = sheet ? sheet.getName() : "unknown";
+    const current = activePerformanceContext_.sheetReads[sheetName] || {
+      count: 0,
+      totalMs: 0,
+    };
+    current.count += 1;
+    current.totalMs += elapsedMs;
+    activePerformanceContext_.sheetReads[sheetName] = current;
+
+    console.log(
+      "[PERF][" +
+        activePerformanceContext_.action +
+        "] READ " +
+        sheetName +
+        ": " +
+        elapsedMs +
+        "ms (" +
+        records.length +
+        "件)"
+    );
+    activePerformanceContext_.lastMarkedAt = Date.now();
+  }
+
+  return records;
+}
+
 function routeApiRequest_(action, payload) {
-  switch (action) {
+  startPerformanceContext_(action);
+
+  try {
+    switch (action) {
     case "ping":
       return apiPing_();
 
@@ -38,6 +186,9 @@ function routeApiRequest_(action, payload) {
     case "listAdjustments":
       return apiListAdjustments_(payload);
 
+    case "getEventDetailData":
+      return apiGetEventDetailData_(payload);
+
     case "deleteAdjustment":
       return apiDeleteAdjustment_(payload);
 
@@ -47,6 +198,16 @@ function routeApiRequest_(action, payload) {
       );
       notFoundError.code = "ACTION_NOT_FOUND";
       throw notFoundError;
+    }
+  } catch (error) {
+    finishPerformanceContext_(
+      "error:" + String((error && error.code) || "UNKNOWN")
+    );
+    throw error;
+  } finally {
+    if (activePerformanceContext_) {
+      finishPerformanceContext_("success");
+    }
   }
 }
 
@@ -91,7 +252,7 @@ function apiCreateUser_(payload) {
       APP_CONFIG.SHEETS.USERS
     );
     const nickname = String(payload.nickname).trim();
-    const users = getSheetRecords_(sheet);
+    const users = getSheetRecordsWithPerf_(sheet);
     const duplicatedUser = users.find(function (user) {
       return (
         String(user.nickname).trim().toLowerCase() ===
@@ -138,7 +299,7 @@ function apiLoginUser_(payload) {
     APP_CONFIG.SHEETS.USERS
   );
   const nickname = String(payload.nickname).trim();
-  const user = getSheetRecords_(sheet).find(function (item) {
+  const user = getSheetRecordsWithPerf_(sheet).find(function (item) {
     return (
       String(item.nickname).trim().toLowerCase() ===
       nickname.toLowerCase()
@@ -214,7 +375,7 @@ function apiCreateEvent_(payload) {
     const sheet = getSheetByNameOrThrow_(
       APP_CONFIG.SHEETS.EVENTS
     );
-    const events = getSheetRecords_(sheet);
+    const events = getSheetRecordsWithPerf_(sheet);
     const preferredEventId = String(
       payload.preferredEventId || ""
     ).trim();
@@ -328,7 +489,7 @@ function apiListEvents_(payload) {
   );
   const matchCountMap = getMatchCountMap_();
 
-  return getSheetRecords_(sheet)
+  return getSheetRecordsWithPerf_(sheet)
     .filter(function (event) {
       return String(event.ownerUserId) === ownerUserId;
     })
@@ -522,7 +683,7 @@ function getMatchCountMap_() {
   );
   const countMap = {};
 
-  getSheetRecords_(sheet).forEach(function (match) {
+  getSheetRecordsWithPerf_(sheet).forEach(function (match) {
     const eventId = String(match.eventId);
     countMap[eventId] =
       (countMap[eventId] || 0) + 1;
@@ -570,11 +731,13 @@ function apiCreatePlayer_(payload) {
     const ownerUserId = String(payload.ownerUserId).trim();
     const eventId = String(payload.eventId).trim();
     assertEventOwnership_(eventId, ownerUserId);
+    markPerformance_("VERIFY_EVENT_OWNERSHIP");
 
     const sheet = getSheetByNameOrThrow_(
       APP_CONFIG.SHEETS.PLAYERS
     );
-    const players = getSheetRecords_(sheet);
+    const players = getSheetRecordsWithPerf_(sheet);
+    markPerformance_("READ_PLAYERS");
     const preferredPlayerId = String(
       payload.preferredPlayerId || ""
     ).trim();
@@ -627,6 +790,7 @@ function apiCreatePlayer_(payload) {
           return String(player.eventId) === eventId;
         }).length + 1;
 
+    markPerformance_("VALIDATE_DUPLICATE_AND_BUILD_ROW");
     sheet.appendRow([
       playerId,
       eventId,
@@ -635,15 +799,16 @@ function apiCreatePlayer_(payload) {
       createdAt,
       updatedAt,
     ]);
+    markPerformance_("WRITE_PLAYER");
 
-    return {
+    return attachPerformance_({
       playerId: playerId,
       eventId: eventId,
       name: name,
       sortOrder: sortOrder,
       createdAt: createdAt,
       updatedAt: updatedAt,
-    };
+    });
   } finally {
     lock.releaseLock();
   }
@@ -667,7 +832,7 @@ function apiListPlayers_(payload) {
     throw ownerError;
   }
 
-  const ownedEventIds = getSheetRecords_(
+  const ownedEventIds = getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
   )
     .filter(function (event) {
@@ -685,7 +850,7 @@ function apiListPlayers_(payload) {
     throw ownershipError;
   }
 
-  return getSheetRecords_(
+  return getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS)
   )
     .filter(function (player) {
@@ -751,7 +916,7 @@ function validatePlayerPayload_(payload) {
 }
 
 function assertEventOwnership_(eventId, ownerUserId) {
-  const event = getSheetRecords_(
+  const event = getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
   ).find(function (item) {
     return String(item.eventId) === String(eventId);
@@ -793,15 +958,25 @@ function apiSaveMatch_(payload) {
     payload.eventId,
     payload.ownerUserId
   );
+  markPerformance_("READ_AND_VERIFY_EVENT");
   const eventRule = buildEventRuleFromRecord_(event);
   const calculatedResults = calculateMatchResultsForEvent_(
     payload.results,
     event,
     eventRule
   );
+  markPerformance_("VALIDATE_AND_CALCULATE");
 
   const lock = LockService.getScriptLock();
+  const lockStartedAt = Date.now();
   lock.waitLock(10000);
+  if (activePerformanceContext_) {
+    activePerformanceContext_.steps.push({
+      label: "WAIT_LOCK",
+      elapsedMs: Date.now() - lockStartedAt,
+    });
+    activePerformanceContext_.lastMarkedAt = Date.now();
+  }
 
   try {
     const matchSheet = getSheetByNameOrThrow_(
@@ -810,17 +985,16 @@ function apiSaveMatch_(payload) {
     const resultSheet = getSheetByNameOrThrow_(
       APP_CONFIG.SHEETS.MATCH_RESULTS
     );
-    const matches = getSheetRecords_(matchSheet);
+    markPerformance_("GET_MATCH_SHEETS");
     const matchId = String(
       payload.preferredMatchId || payload.matchId || ""
     ).trim() || createId_("match");
-    const existingIndex = matches.findIndex(function (match) {
-      return String(match.matchId) === matchId;
-    });
+    const existingMatch = findMatchRowById_(matchSheet, matchId);
+    markPerformance_("FIND_MATCH_ROW");
 
     if (
-      existingIndex >= 0 &&
-      String(matches[existingIndex].eventId) !== String(event.eventId)
+      existingMatch &&
+      String(existingMatch.eventId) !== String(event.eventId)
     ) {
       const conflictError = new Error(
         "同じ半荘IDが別のイベントに使用されています。"
@@ -830,8 +1004,8 @@ function apiSaveMatch_(payload) {
     }
 
     const now = getNowIso_();
-    const createdAt = existingIndex >= 0
-      ? toIsoString_(matches[existingIndex].createdAt)
+    const createdAt = existingMatch
+      ? toIsoString_(existingMatch.createdAt)
       : normalizeOptionalIso_(payload.createdAt) || now;
     const playedAt =
       normalizeOptionalIso_(payload.playedAt) || createdAt;
@@ -845,23 +1019,29 @@ function apiSaveMatch_(payload) {
       now,
     ];
 
-    if (existingIndex >= 0) {
+    if (existingMatch) {
       matchSheet
-        .getRange(existingIndex + 2, 1, 1, row.length)
+        .getRange(existingMatch.rowNumber, 1, 1, row.length)
         .setValues([row]);
     } else {
-      matchSheet.appendRow(row);
+      const nextRow = Math.max(matchSheet.getLastRow() + 1, 2);
+      matchSheet
+        .getRange(nextRow, 1, 1, row.length)
+        .setValues([row]);
     }
+    markPerformance_("WRITE_MATCH");
 
-    replaceMatchResultRows_(
+    upsertMatchResultRows_(
       resultSheet,
       matchId,
       calculatedResults,
       createdAt,
       now
     );
+    markPerformance_("WRITE_MATCH_RESULTS");
 
-    return {
+    markPerformance_("BUILD_RESPONSE");
+    return attachPerformance_({
       matchId: matchId,
       eventId: String(event.eventId),
       gameType: gameType,
@@ -889,10 +1069,42 @@ function apiSaveMatch_(payload) {
       playedAt: playedAt,
       createdAt: createdAt,
       updatedAt: now,
-    };
+    });
   } finally {
     lock.releaseLock();
   }
+}
+
+function findMatchRowById_(matchSheet, matchId) {
+  const lastRow = matchSheet.getLastRow();
+  if (lastRow < 2) {
+    return null;
+  }
+
+  const finder = matchSheet
+    .getRange(2, 1, lastRow - 1, 1)
+    .createTextFinder(String(matchId))
+    .matchEntireCell(true);
+  const found = finder.findNext();
+
+  if (!found) {
+    return null;
+  }
+
+  const rowNumber = found.getRow();
+  const values = matchSheet
+    .getRange(rowNumber, 1, 1, 6)
+    .getValues()[0];
+
+  return {
+    rowNumber: rowNumber,
+    matchId: values[0],
+    eventId: values[1],
+    gameType: values[2],
+    playedAt: values[3],
+    createdAt: values[4],
+    updatedAt: values[5],
+  };
 }
 
 function apiListMatches_(payload) {
@@ -908,7 +1120,7 @@ function apiListMatches_(payload) {
     throw ownerError;
   }
 
-  const events = getSheetRecords_(
+  const events = getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
   ).filter(function (event) {
     return String(event.ownerUserId) === ownerUserId;
@@ -920,17 +1132,17 @@ function apiListMatches_(payload) {
   });
 
   const playerMap = {};
-  getSheetRecords_(
+  getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS)
   ).forEach(function (player) {
     playerMap[String(player.playerId)] = String(player.name || "");
   });
 
-  const results = getSheetRecords_(
+  const results = getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCH_RESULTS)
   );
 
-  return getSheetRecords_(
+  return getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCHES)
   )
     .filter(function (match) {
@@ -994,7 +1206,7 @@ function apiDeleteMatch_(payload) {
   const matchSheet = getSheetByNameOrThrow_(
     APP_CONFIG.SHEETS.MATCHES
   );
-  const matches = getSheetRecords_(matchSheet);
+  const matches = getSheetRecordsWithPerf_(matchSheet);
   const index = matches.findIndex(function (match) {
     return String(match.matchId) === matchId;
   });
@@ -1051,7 +1263,7 @@ function validateMatchPayload_(payload) {
 function getOwnedEventRecord_(eventId, ownerUserId) {
   const normalizedEventId = String(eventId || "").trim();
   const normalizedOwnerUserId = String(ownerUserId || "").trim();
-  const event = getSheetRecords_(
+  const event = getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
   ).find(function (item) {
     return String(item.eventId) === normalizedEventId;
@@ -1095,7 +1307,7 @@ function buildEventRuleFromRecord_(event) {
 
 function calculateMatchResultsForEvent_(payloadResults, event, eventRule) {
   const eventId = String(event.eventId);
-  const eventPlayers = getSheetRecords_(
+  const eventPlayers = getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS)
   ).filter(function (player) {
     return String(player.eventId) === eventId;
@@ -1142,22 +1354,15 @@ function calculateMatchResultsForEvent_(payloadResults, event, eventRule) {
   });
 }
 
-function replaceMatchResultRows_(
+function upsertMatchResultRows_(
   resultSheet,
   matchId,
   calculatedResults,
   createdAt,
   updatedAt
 ) {
-  const lastColumn = resultSheet.getLastColumn();
-  const existingValues = resultSheet.getDataRange().getValues();
-  const header = existingValues.length > 0
-    ? existingValues[0]
-    : [];
-  const retainedRows = existingValues.slice(1).filter(function (row) {
-    return String(row[1]) !== String(matchId);
-  });
-  const newRows = calculatedResults.map(function (result, index) {
+  const lastRow = resultSheet.getLastRow();
+  const resultRows = calculatedResults.map(function (result, index) {
     return [
       createId_("matchResult"),
       matchId,
@@ -1170,6 +1375,75 @@ function replaceMatchResultRows_(
       createdAt,
       updatedAt,
     ];
+  });
+
+  if (lastRow < 2) {
+    resultSheet
+      .getRange(2, 1, resultRows.length, resultRows[0].length)
+      .setValues(resultRows);
+    return;
+  }
+
+  const matchIdValues = resultSheet
+    .getRange(2, 2, lastRow - 1, 1)
+    .getValues();
+  const matchingRowNumbers = [];
+
+  matchIdValues.forEach(function (row, index) {
+    if (String(row[0]) === String(matchId)) {
+      matchingRowNumbers.push(index + 2);
+    }
+  });
+
+  if (matchingRowNumbers.length === 0) {
+    resultSheet
+      .getRange(lastRow + 1, 1, resultRows.length, resultRows[0].length)
+      .setValues(resultRows);
+    return;
+  }
+
+  const firstRow = matchingRowNumbers[0];
+  const rowsAreContiguous = matchingRowNumbers.every(function (
+    rowNumber,
+    index
+  ) {
+    return rowNumber === firstRow + index;
+  });
+
+  if (
+    rowsAreContiguous &&
+    matchingRowNumbers.length === resultRows.length
+  ) {
+    const existingIds = resultSheet
+      .getRange(firstRow, 1, resultRows.length, 1)
+      .getValues();
+
+    resultRows.forEach(function (row, index) {
+      row[0] = existingIds[index][0] || row[0];
+    });
+
+    resultSheet
+      .getRange(firstRow, 1, resultRows.length, resultRows[0].length)
+      .setValues(resultRows);
+    return;
+  }
+
+  replaceMatchResultRowsFallback_(
+    resultSheet,
+    matchId,
+    resultRows
+  );
+}
+
+function replaceMatchResultRowsFallback_(
+  resultSheet,
+  matchId,
+  newRows
+) {
+  const lastColumn = resultSheet.getLastColumn();
+  const existingValues = resultSheet.getDataRange().getValues();
+  const retainedRows = existingValues.slice(1).filter(function (row) {
+    return String(row[1]) !== String(matchId);
   });
   const allRows = retainedRows.concat(newRows);
 
@@ -1240,7 +1514,7 @@ function apiSaveAdjustment_(payload) {
     const entrySheet = getSheetByNameOrThrow_(
       APP_CONFIG.SHEETS.ADJUSTMENT_ENTRIES
     );
-    const adjustments = getSheetRecords_(adjustmentSheet);
+    const adjustments = getSheetRecordsWithPerf_(adjustmentSheet);
     const adjustmentId = String(
       payload.preferredAdjustmentId || payload.adjustmentId || ""
     ).trim() || createId_("adjustment");
@@ -1326,7 +1600,7 @@ function apiListAdjustments_(payload) {
     throw new Error("ユーザーIDが指定されていません。");
   }
 
-  const eventIds = getSheetRecords_(
+  const eventIds = getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
   )
     .filter(function (event) {
@@ -1335,11 +1609,11 @@ function apiListAdjustments_(payload) {
     .map(function (event) {
       return String(event.eventId);
     });
-  const entries = getSheetRecords_(
+  const entries = getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.ADJUSTMENT_ENTRIES)
   );
 
-  return getSheetRecords_(
+  return getSheetRecordsWithPerf_(
     getSheetByNameOrThrow_(APP_CONFIG.SHEETS.ADJUSTMENTS)
   )
     .filter(function (adjustment) {
@@ -1371,6 +1645,190 @@ function apiListAdjustments_(payload) {
     });
 }
 
+
+/**
+ * STEP12-2: 対局詳細画面に必要なプレイヤー・半荘・調整を一括取得します。
+ * 各シートは1回だけ読み込み、従来の3API分の重複読込をなくします。
+ */
+function apiGetEventDetailData_(payload) {
+  const ownerUserId = String(
+    (payload && payload.ownerUserId) || ""
+  ).trim();
+
+  if (!ownerUserId) {
+    const ownerError = new Error(
+      "ユーザーIDが指定されていません。"
+    );
+    ownerError.code = "INVALID_OWNER_USER_ID";
+    throw ownerError;
+  }
+
+  const events = getSheetRecordsWithPerf_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.EVENTS)
+  ).filter(function (event) {
+    return String(event.ownerUserId) === ownerUserId;
+  });
+  markPerformance_("READ_EVENTS");
+  const ownedEventIdSet = {};
+  const eventMap = {};
+
+  events.forEach(function (event) {
+    const eventId = String(event.eventId);
+    ownedEventIdSet[eventId] = true;
+    eventMap[eventId] = event;
+  });
+
+  const playerRecords = getSheetRecordsWithPerf_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.PLAYERS)
+  ).filter(function (player) {
+    return Boolean(ownedEventIdSet[String(player.eventId)]);
+  });
+  markPerformance_("READ_PLAYERS");
+  const playerMap = {};
+
+  playerRecords.forEach(function (player) {
+    playerMap[String(player.playerId)] = String(player.name || "");
+  });
+
+  const matchRecords = getSheetRecordsWithPerf_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCHES)
+  ).filter(function (match) {
+    return Boolean(ownedEventIdSet[String(match.eventId)]);
+  });
+  markPerformance_("READ_MATCHES");
+  const ownedMatchIdSet = {};
+
+  matchRecords.forEach(function (match) {
+    ownedMatchIdSet[String(match.matchId)] = true;
+  });
+
+  const matchResultsByMatchId = {};
+  getSheetRecordsWithPerf_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.MATCH_RESULTS)
+  )
+    .filter(function (result) {
+      return Boolean(ownedMatchIdSet[String(result.matchId)]);
+    })
+    .forEach(function (result) {
+      const matchId = String(result.matchId);
+      if (!matchResultsByMatchId[matchId]) {
+        matchResultsByMatchId[matchId] = [];
+      }
+      matchResultsByMatchId[matchId].push(result);
+    });
+
+  markPerformance_("READ_MATCH_RESULTS");
+  const adjustmentRecords = getSheetRecordsWithPerf_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.ADJUSTMENTS)
+  ).filter(function (adjustment) {
+    return Boolean(ownedEventIdSet[String(adjustment.eventId)]);
+  });
+  markPerformance_("READ_ADJUSTMENTS");
+  const ownedAdjustmentIdSet = {};
+
+  adjustmentRecords.forEach(function (adjustment) {
+    ownedAdjustmentIdSet[String(adjustment.adjustmentId)] = true;
+  });
+
+  const adjustmentEntriesByAdjustmentId = {};
+  getSheetRecordsWithPerf_(
+    getSheetByNameOrThrow_(APP_CONFIG.SHEETS.ADJUSTMENT_ENTRIES)
+  )
+    .filter(function (entry) {
+      return Boolean(
+        ownedAdjustmentIdSet[String(entry.adjustmentId)]
+      );
+    })
+    .forEach(function (entry) {
+      const adjustmentId = String(entry.adjustmentId);
+      if (!adjustmentEntriesByAdjustmentId[adjustmentId]) {
+        adjustmentEntriesByAdjustmentId[adjustmentId] = [];
+      }
+      adjustmentEntriesByAdjustmentId[adjustmentId].push(entry);
+    });
+
+  markPerformance_("READ_ADJUSTMENT_ENTRIES");
+  const players = playerRecords
+    .map(serializePlayerRecord_)
+    .sort(function (a, b) {
+      if (a.eventId !== b.eventId) {
+        return a.eventId.localeCompare(b.eventId);
+      }
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+      return new Date(a.createdAt).getTime() -
+        new Date(b.createdAt).getTime();
+    });
+
+  const matches = matchRecords.map(function (match) {
+    const event = eventMap[String(match.eventId)];
+    const matchResults = (matchResultsByMatchId[String(match.matchId)] || [])
+      .slice()
+      .sort(function (a, b) {
+        return Number(a.rank) - Number(b.rank);
+      })
+      .map(function (result) {
+        return {
+          playerId: String(result.playerId),
+          playerName: playerMap[String(result.playerId)] || "",
+          points: Number(result.rawScore),
+          rank: Number(result.rank),
+          rankPoint: Number(result.rankScore),
+          finalScore: Number(result.finalScore),
+        };
+      });
+
+    return {
+      matchId: String(match.matchId),
+      eventId: String(match.eventId),
+      gameType: String(match.gameType),
+      ruleMode: String(event.ruleMode || "preset"),
+      rulePreset: String(event.rulePreset || ""),
+      umaPreset: String(event.rulePreset || ""),
+      entryOrderPlayerIds: matchResults.map(function (result) {
+        return result.playerId;
+      }),
+      tieBreakOrderPlayerIds: [],
+      results: matchResults,
+      playedAt: toIsoString_(match.playedAt),
+      createdAt: toIsoString_(match.createdAt),
+      updatedAt: toIsoString_(match.updatedAt),
+    };
+  });
+
+  const adjustments = adjustmentRecords.map(function (adjustment) {
+    const entries = (
+      adjustmentEntriesByAdjustmentId[
+        String(adjustment.adjustmentId)
+      ] || []
+    ).map(function (entry) {
+      return {
+        playerId: String(entry.playerId),
+        playerName: playerMap[String(entry.playerId)] || "",
+        points: Number(entry.points),
+      };
+    });
+
+    return {
+      adjustmentId: String(adjustment.adjustmentId),
+      eventId: String(adjustment.eventId),
+      title: String(adjustment.title || ""),
+      entries: entries,
+      adjustedAt: toIsoString_(adjustment.adjustedAt),
+      createdAt: toIsoString_(adjustment.createdAt),
+      updatedAt: toIsoString_(adjustment.updatedAt),
+    };
+  });
+
+  markPerformance_("BUILD_EVENT_DETAIL_RESPONSE");
+  return attachPerformance_({
+    players: players,
+    matches: matches,
+    adjustments: adjustments,
+  });
+}
+
 function apiDeleteAdjustment_(payload) {
   const adjustmentId = String(
     (payload && payload.adjustmentId) || ""
@@ -1386,7 +1844,7 @@ function apiDeleteAdjustment_(payload) {
   const adjustmentSheet = getSheetByNameOrThrow_(
     APP_CONFIG.SHEETS.ADJUSTMENTS
   );
-  const adjustments = getSheetRecords_(adjustmentSheet);
+  const adjustments = getSheetRecordsWithPerf_(adjustmentSheet);
   const index = adjustments.findIndex(function (item) {
     return String(item.adjustmentId) === adjustmentId;
   });

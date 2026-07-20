@@ -218,6 +218,9 @@ const playerAddMessage = document.getElementById(
 const playerSaveButton = document.getElementById(
   "player-save-button",
 );
+const playerFinishButton = document.getElementById(
+  "player-finish-button",
+);
 
 const matchHistoryList = document.getElementById(
   "match-history-list",
@@ -589,7 +592,7 @@ function getApiConfig() {
 
   return {
     gasWebAppUrl: String(config.GAS_WEB_APP_URL || "").trim(),
-    timeoutMs: Number(config.API_TIMEOUT_MS) || 30000,
+    timeoutMs: Math.max(Number(config.API_TIMEOUT_MS) || 30000, 30000),
   };
 }
 
@@ -651,7 +654,43 @@ function renderConnectionCard() {
   setConnectionStatus("unconfigured");
 }
 
+/**
+ * STEP12-1: ブラウザ側のAPI通信時間をConsoleへ出力します。
+ */
+function logApiPerformance(action, elapsedMs, status = "success") {
+  const roundedMs = Math.round(elapsedMs);
+  console.log(
+    `[PERF][API][${action}] ${status}: ${roundedMs}ms`,
+  );
+}
+
+function logGasPerformanceDetail(action, data) {
+  const detail = data && data.__performance;
+  if (!detail) {
+    return;
+  }
+
+  console.groupCollapsed(
+    `[PERF][GAS][${action}] total: ${detail.totalMs}ms`,
+  );
+  (detail.steps || []).forEach((step) => {
+    console.log(`${step.label}: ${step.elapsedMs}ms`);
+  });
+  Object.entries(detail.sheetReads || {}).forEach(
+    ([sheetName, item]) => {
+      console.log(
+        `SHEET ${sheetName}: ${item.totalMs}ms / ${item.count}回`,
+      );
+    },
+  );
+  console.groupEnd();
+
+  delete data.__performance;
+}
+
 async function callGasApi(action, payload = null) {
+  const performanceStartedAt = performance.now();
+  let performanceStatus = "success";
   const { gasWebAppUrl, timeoutMs } = getApiConfig();
 
   if (!isGasWebAppConfigured()) {
@@ -713,8 +752,14 @@ async function callGasApi(action, payload = null) {
       throw apiError;
     }
 
+    logGasPerformanceDetail(action, result.data);
     return result.data;
   } catch (error) {
+    performanceStatus =
+      error.name === "AbortError"
+        ? "timeout"
+        : `error:${error.code || error.name || "UNKNOWN"}`;
+
     if (error.name === "AbortError") {
       throw new Error(
         "接続確認がタイムアウトしました。GASのURLとデプロイ設定を確認してください。",
@@ -724,6 +769,11 @@ async function callGasApi(action, payload = null) {
     throw error;
   } finally {
     window.clearTimeout(timeoutId);
+    logApiPerformance(
+      action,
+      performance.now() - performanceStartedAt,
+      performanceStatus,
+    );
   }
 }
 
@@ -1763,6 +1813,67 @@ async function loadAdjustmentsFromSheet({ force = false } = {}) {
 }
 
 
+/**
+ * STEP12-2: 対局詳細画面で必要なデータを1回のAPI通信で取得します。
+ * これまでの listPlayers / listMatches / listAdjustments の3通信を統合し、
+ * GASの起動待ちと通信往復を減らします。
+ */
+async function loadEventDetailDataFromSheet({ force = false } = {}) {
+  if (!currentUser) {
+    return {
+      players: [],
+      matches: [],
+      adjustments: [],
+    };
+  }
+
+  const alreadyLoaded =
+    loadedPlayerOwnerUserId === currentUser.userId &&
+    loadedMatchOwnerUserId === currentUser.userId &&
+    loadedAdjustmentOwnerUserId === currentUser.userId;
+
+  if (!force && alreadyLoaded) {
+    return {
+      players: cloudPlayers,
+      matches: cloudMatches,
+      adjustments: cloudAdjustments,
+    };
+  }
+
+  // 初回移行が残っている環境だけ、従来の移行処理を先に完了します。
+  await loadEventsFromSheet();
+  await Promise.all([
+    migrateLegacyPlayersToSheet(),
+    migrateLegacyMatchesToSheet(),
+    migrateLegacyAdjustmentsToSheet(),
+  ]);
+
+  const detailData = await callGasApi("getEventDetailData", {
+    ownerUserId: currentUser.userId,
+  });
+
+  cloudPlayers = Array.isArray(detailData?.players)
+    ? detailData.players.map(normalizeCloudPlayer)
+    : [];
+  cloudMatches = Array.isArray(detailData?.matches)
+    ? detailData.matches.map(normalizeCloudMatch)
+    : [];
+  cloudAdjustments = Array.isArray(detailData?.adjustments)
+    ? detailData.adjustments.map(normalizeCloudAdjustment)
+    : [];
+
+  loadedPlayerOwnerUserId = currentUser.userId;
+  loadedMatchOwnerUserId = currentUser.userId;
+  loadedAdjustmentOwnerUserId = currentUser.userId;
+
+  return {
+    players: cloudPlayers,
+    matches: cloudMatches,
+    adjustments: cloudAdjustments,
+  };
+}
+
+
 function scrollPageToTop() {
   requestAnimationFrame(() => {
     window.scrollTo({
@@ -1797,11 +1908,7 @@ async function showEventDetailScreen(
   showLoading("大会データを読み込んでいます…");
 
   try {
-    await Promise.all([
-      loadPlayersFromSheet(),
-      loadMatchesFromSheet(),
-      loadAdjustmentsFromSheet(),
-    ]);
+    await loadEventDetailDataFromSheet();
     renderEventDetail();
 
     if (scrollToTop) {
@@ -4903,9 +5010,11 @@ playerAddForm.addEventListener(
   "submit",
   handlePlayerAddSubmit,
 );
-playerFinishButton.addEventListener("click", () => {
-  showEventDetailScreen(currentEvent, { scrollToTop: true });
-});
+if (playerFinishButton) {
+  playerFinishButton.addEventListener("click", () => {
+    showEventDetailScreen(currentEvent, { scrollToTop: true });
+  });
+}
 
 connectionTestButton.addEventListener(
   "click",

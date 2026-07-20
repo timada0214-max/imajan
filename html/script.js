@@ -686,10 +686,51 @@ function logGasPerformanceDetail(action, data) {
   console.groupEnd();
 
   delete data.__performance;
+  return detail;
+}
+
+function logNetworkPerformance(action, timings, gasDetail, status) {
+  const totalMs = timings.finishedAt - timings.startedAt;
+  const waitResponseMs = timings.responseAt
+    ? timings.responseAt - timings.requestSentAt
+    : totalMs;
+  const readJsonMs =
+    timings.jsonAt && timings.responseAt
+      ? timings.jsonAt - timings.responseAt
+      : 0;
+  const processResponseMs =
+    timings.finishedAt && timings.jsonAt
+      ? timings.finishedAt - timings.jsonAt
+      : 0;
+  const gasMs = Number(gasDetail?.totalMs || 0);
+  const outsideGasMs = Math.max(0, Math.round(totalMs - gasMs));
+
+  console.groupCollapsed(
+    `[PERF][NET][${action}] ${status}: ${Math.round(totalMs)}ms`,
+  );
+  console.log(`WAIT_RESPONSE_HEADERS: ${Math.round(waitResponseMs)}ms`);
+  console.log(`READ_RESPONSE_JSON: ${Math.round(readJsonMs)}ms`);
+  console.log(`PROCESS_RESPONSE: ${Math.round(processResponseMs)}ms`);
+  if (gasMs > 0) {
+    console.log(`GAS_REPORTED_TOTAL: ${Math.round(gasMs)}ms`);
+    console.log(
+      `OUTSIDE_GAS_ESTIMATE: ${outsideGasMs}ms ` +
+        "（通信・GAS起動待ち・レスポンス受信など）",
+    );
+  }
+  console.groupEnd();
 }
 
 async function callGasApi(action, payload = null) {
   const performanceStartedAt = performance.now();
+  const networkTimings = {
+    startedAt: performanceStartedAt,
+    requestSentAt: performanceStartedAt,
+    responseAt: 0,
+    jsonAt: 0,
+    finishedAt: 0,
+  };
+  let gasPerformanceDetail = null;
   let performanceStatus = "success";
   const { gasWebAppUrl, timeoutMs } = getApiConfig();
 
@@ -707,6 +748,7 @@ async function callGasApi(action, payload = null) {
 
   try {
     let response;
+    networkTimings.requestSentAt = performance.now();
 
     if (payload === null) {
       const url = new URL(gasWebAppUrl);
@@ -734,6 +776,8 @@ async function callGasApi(action, payload = null) {
       });
     }
 
+    networkTimings.responseAt = performance.now();
+
     if (!response.ok) {
       throw new Error(
         `GASからHTTP ${response.status}が返されました。`,
@@ -741,6 +785,7 @@ async function callGasApi(action, payload = null) {
     }
 
     const result = await response.json();
+    networkTimings.jsonAt = performance.now();
 
     if (!result || result.ok !== true) {
       const apiError = new Error(
@@ -752,7 +797,10 @@ async function callGasApi(action, payload = null) {
       throw apiError;
     }
 
-    logGasPerformanceDetail(action, result.data);
+    gasPerformanceDetail = logGasPerformanceDetail(
+      action,
+      result.data,
+    );
     return result.data;
   } catch (error) {
     performanceStatus =
@@ -769,6 +817,13 @@ async function callGasApi(action, payload = null) {
     throw error;
   } finally {
     window.clearTimeout(timeoutId);
+    networkTimings.finishedAt = performance.now();
+    logNetworkPerformance(
+      action,
+      networkTimings,
+      gasPerformanceDetail,
+      performanceStatus,
+    );
     logApiPerformance(
       action,
       performance.now() - performanceStartedAt,
@@ -2187,6 +2242,34 @@ function selectFromOldestSelectedToLatest() {
 }
 
 function renderEventDetail() {
+  const renderStartedAt = performance.now();
+  renderEventDetailContent_();
+  const syncFinishedAt = performance.now();
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const paintedAt = performance.now();
+      console.groupCollapsed(
+        `[PERF][UI][renderEventDetail] paint: ${Math.round(
+          paintedAt - renderStartedAt,
+        )}ms`,
+      );
+      console.log(
+        `DOM_UPDATE_SYNC: ${Math.round(
+          syncFinishedAt - renderStartedAt,
+        )}ms`,
+      );
+      console.log(
+        `WAIT_BROWSER_PAINT: ${Math.round(
+          paintedAt - syncFinishedAt,
+        )}ms`,
+      );
+      console.groupEnd();
+    });
+  });
+}
+
+function renderEventDetailContent_() {
   if (!currentEvent) {
     return;
   }

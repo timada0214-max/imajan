@@ -951,6 +951,7 @@ function apiCreatePlayer_(payload) {
       eventDetail: true,
     });
 
+    markPerformance_("RETURN_RESPONSE");
     return attachPerformance_({
       playerId: playerId,
       eventId: eventId,
@@ -1195,6 +1196,7 @@ function apiSaveMatch_(payload) {
     });
 
     markPerformance_("BUILD_RESPONSE");
+    markPerformance_("RETURN_RESPONSE");
     return attachPerformance_({
       matchId: matchId,
       eventId: String(event.eventId),
@@ -1829,6 +1831,7 @@ function apiGetEventDetailData_(payload) {
   const cachedDetail = readJsonCache_(cacheKey, "eventDetail");
   if (cachedDetail !== null) {
     markPerformance_("CACHE_HIT_EVENT_DETAIL");
+    markPerformance_("RETURN_RESPONSE");
     return attachPerformance_(cachedDetail);
   }
 
@@ -2002,6 +2005,7 @@ function apiGetEventDetailData_(payload) {
     CACHE_CONFIG_.EVENT_DETAIL_TTL_SECONDS,
     "eventDetail"
   );
+  markPerformance_("RETURN_RESPONSE");
   return attachPerformance_(detail);
 }
 

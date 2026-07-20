@@ -589,7 +589,7 @@ function getApiConfig() {
 
   return {
     gasWebAppUrl: String(config.GAS_WEB_APP_URL || "").trim(),
-    timeoutMs: Number(config.API_TIMEOUT_MS) || 10000,
+    timeoutMs: Number(config.API_TIMEOUT_MS) || 30000,
   };
 }
 
@@ -3098,6 +3098,7 @@ function prepareMatchForm({ match = null } = {}) {
     Boolean(match),
   );
   restoreMatchSaveButtonLabels(Boolean(match));
+  matchSaveNextButton.hidden = !match;
   matchDeleteButton.hidden = !match;
 
   matchCreateCaption.textContent =

@@ -853,22 +853,13 @@ function apiSaveMatch_(payload) {
       matchSheet.appendRow(row);
     }
 
-    deleteMatchResultRows_(resultSheet, matchId);
-
-    calculatedResults.forEach(function (result, index) {
-      resultSheet.appendRow([
-        createId_("matchResult"),
-        matchId,
-        result.playerId,
-        result.rawPoints,
-        result.rank,
-        result.rankScore,
-        result.finalScore,
-        index + 1,
-        createdAt,
-        now,
-      ]);
-    });
+    replaceMatchResultRows_(
+      resultSheet,
+      matchId,
+      calculatedResults,
+      createdAt,
+      now
+    );
 
     return {
       matchId: matchId,
@@ -1151,13 +1142,47 @@ function calculateMatchResultsForEvent_(payloadResults, event, eventRule) {
   });
 }
 
-function deleteMatchResultRows_(resultSheet, matchId) {
-  const values = resultSheet.getDataRange().getValues();
+function replaceMatchResultRows_(
+  resultSheet,
+  matchId,
+  calculatedResults,
+  createdAt,
+  updatedAt
+) {
+  const lastColumn = resultSheet.getLastColumn();
+  const existingValues = resultSheet.getDataRange().getValues();
+  const header = existingValues.length > 0
+    ? existingValues[0]
+    : [];
+  const retainedRows = existingValues.slice(1).filter(function (row) {
+    return String(row[1]) !== String(matchId);
+  });
+  const newRows = calculatedResults.map(function (result, index) {
+    return [
+      createId_("matchResult"),
+      matchId,
+      result.playerId,
+      result.rawPoints,
+      result.rank,
+      result.rankScore,
+      result.finalScore,
+      index + 1,
+      createdAt,
+      updatedAt,
+    ];
+  });
+  const allRows = retainedRows.concat(newRows);
 
-  for (let index = values.length - 1; index >= 1; index -= 1) {
-    if (String(values[index][1]) === String(matchId)) {
-      resultSheet.deleteRow(index + 1);
-    }
+  if (resultSheet.getLastRow() > 1) {
+    resultSheet
+      .getRange(2, 1, resultSheet.getLastRow() - 1, lastColumn)
+      .clearContent();
+  }
+
+  if (allRows.length > 0) {
+    resultSheet
+      .getRange(2, 1, allRows.length, lastColumn)
+      .setValues(allRows);
   }
 }
 
